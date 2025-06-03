@@ -1,5 +1,5 @@
 ##### Memo
-📘 日本株スイングトレード分析スクリプト_v1.01
+📘 日本株スイングトレード分析スクリプト
 
 [仕組み]
 1.Googleドライブに保存しているスプレット上に「銘柄コード」を入力
@@ -17,13 +17,15 @@
     ・Googleドライブとの連携
     ver1.01
     ・表示フラグで、画像の保存オン・オフ機能を実装
+    ver1.02
+    ・コードの見栄えを少し修正した。
+    ・外部ファイルのコードを末尾に追記
+[未実装機能]
+    ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
+    「今回のシグナルの信頼度（スコア）」を出力するのが目的です。
+    ・
 
 ##### Memo_END
-
-# ✅ Google Colabで必須ファイルを手動インストール
-!apt-get -y install fonts-noto-cjk
-!apt-get install -y wkhtmltopdf
-!pip install imgkit
 
 import imgkit
 import io
@@ -99,9 +101,10 @@ SHOW_ADX = 1
 SHOW_MACD = 1
 SHOW_STOCH = 1
 SHOW_BB = 1
-SHOW_SAVE_CHART = 1
+SHOW_SAVE_CHART = 0
 
-# 各銘柄の処理
+######### 1.ループ-START- #########
+
 for symbol in symbols:
     try:
         info = yf.Ticker(symbol).info
@@ -114,7 +117,7 @@ for symbol in symbols:
         df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"]).astype(float)
         df.index.name = "Date"
 
-        # 指標計算
+        # テクニカル指標
         df["RSI"] = momentum.RSIIndicator(df["Close"], window=14).rsi()
         df["Vol_MA5"] = df["Volume"].rolling(5).mean()
         df["Vol_MA25"] = df["Volume"].rolling(25).mean()
@@ -147,6 +150,8 @@ for symbol in symbols:
         if df_recent.empty:
             print(f"⚠️ {symbol} はデータ不足でスキップ")
             continue
+
+######### 2.チャート-START- #########
 
         # チャート描画
         add_plots = []
@@ -200,7 +205,7 @@ for symbol in symbols:
             if ax.yaxis.label:  # Y軸ラベル
                 ax.yaxis.label.set_fontproperties(jp_font)
 
-        # ✅ タイトルや取得日などの情報をグラフ上部に追加（ここ！）
+        # ✅ タイトルや取得日などの情報をグラフ上部に追加
         title = f"{name}（{symbol}）株価チャート（直近60日） - {today_str}"
         axlist[0].set_title(title, fontproperties=jp_font)
 
@@ -212,18 +217,20 @@ for symbol in symbols:
             ax.axhline(80, color='red', linestyle='--', linewidth=1)
             ax.axhline(20, color='blue', linestyle='--', linewidth=1)
 
+        # ✅ グラフ画像の保存
         chart_path = f"{symbol}_{name}_{today_str}.png"
-
         for text in fig.texts:
             text.set_fontproperties(jp_font)
-
         if SHOW_SAVE_CHART:
             fig.savefig(chart_path, dpi=150)
             plt.close(fig)
-
         if not os.path.exists(chart_path):
             raise FileNotFoundError(f"チャート画像の保存に失敗しました: {chart_path}")
 
+######### 2.チャート-END- #########
+######### 3.テーブル-START- #########
+
+        # ✅ 表データの作成
         df_recent_week = df_filtered[-7:]
         date_labels = [d.strftime("%-m/%-d") for d in df_recent_week.index]
         divider = lambda name: [f"── {name} ──"] + ["" for _ in df_recent_week.index]
@@ -260,10 +267,23 @@ for symbol in symbols:
         # ✅ コメント列作成
         comment_map = {}
 
+        # ✅ コメント列統合
+        def emphasize(val):
+            if "買い" in val:
+                return f"🟢 {val}"
+            elif "売り" in val:
+                return f"🔴 {val}"
+            elif "中立" in val:
+                return f"🟡 {val}"
+            return val
+
+  ######### 2-1.指標判断-START- #########
+
         # 株価（終値）
         if "Close" in latest and "Close" in previous:
             diff = latest["Close"] - previous["Close"]
             comment_map["株価（終値）"] = f"終値={latest['Close']:.2f}（前日比{diff:+.2f}）"
+
         # ✅ 移動平均線-クロス判定（短期：5DMA vs 25DMA）
         if latest["MA5"] > latest["MA25"] and previous["MA5"] <= previous["MA25"]:
             gap = (latest["MA5"] - latest["MA25"]) / latest["MA25"] * 100
@@ -286,6 +306,7 @@ for symbol in symbols:
         else:
             gap = abs(latest["MA5"] - latest["MA25"]) / latest["MA25"] * 100
             comment_map["5DMA"] = f"中立｜明確なシグナルなし（{gap:.2f}%差）"
+
         # ✅ 移動平均線-クロス判定（中期：25DMA vs 75DMA）
         if latest["MA25"] > latest["MA75"] and previous["MA25"] <= previous["MA75"]:
             gap = (latest["MA25"] - latest["MA75"]) / latest["MA75"] * 100
@@ -308,7 +329,8 @@ for symbol in symbols:
         else:
             gap = abs(latest["MA25"] - latest["MA75"]) / latest["MA75"] * 100
             comment_map["25DMA"] = f"中立｜明確なシグナルなし（{gap:.2f}%差）"
-        # ✅ 移動平均線-クロス判定（超ゴールデンクロス／超デッドクロス）
+
+        # ✅ 超ゴールデンクロス／デッドクロス
         if (
             latest["MA5"] > latest["MA25"] > latest["MA75"] and
             (previous["MA5"] <= previous["MA25"] or previous["MA5"] <= previous["MA75"])
@@ -334,7 +356,6 @@ for symbol in symbols:
                 strength = "弱"
             comment_map["超DC"] = f"売り｜超ＤＣ（5日→25日→75日 / {gap:.2f}%乖離 / 信頼度{strength}）"
         else:
-            # 超GCでも超DCでもない場合（上下順序がそろっていない or 維持されている）
             order = [latest["MA5"], latest["MA25"], latest["MA75"]]
             if order == sorted(order, reverse=True):
                 trend_desc = "下降順序（5日＜25日＜75日）"
@@ -344,7 +365,8 @@ for symbol in symbols:
                 trend_desc = "順序バラバラ"
             gap = abs(latest["MA5"] - latest["MA75"]) / latest["MA75"] * 100
             comment_map["超GC/DC"] = f"中立｜明確なシグナルなし（{trend_desc} / 5日-75日差：{gap:.2f}％）"
-        # ✅ 移動平均線乖離（25日線からのズレ）
+
+        # ✅ 25日移動平均線からの乖離
         if "MA25_Deviation" in latest:
             dev = latest["MA25_Deviation"]
             if dev > 5:
@@ -353,7 +375,8 @@ for symbol in symbols:
                 comment_map["25日乖離率（%）"] = f"買い｜平均より大きく下振れ（割安感あり）"
             else:
                 comment_map["25日乖離率（%）"] = f"中立｜平均付近で安定"
-        # ✅ MACDシグナル判定（わかりやすいコメント付き）
+
+        # ✅ MACD
         if "MACD_Diff" in latest and "MACD_Diff" in previous:
             val, prev_val = latest["MACD_Diff"], previous["MACD_Diff"]
             diff = val - prev_val
@@ -368,7 +391,8 @@ for symbol in symbols:
                 else:
                     signal = "売り｜MACDマイナス圏だが減速中（様子見）"
             comment_map["MACD"] = f"{signal}"
-        # ✅ ADX コメント（トレンドの強さ判定）
+
+        # ✅ ADX
         if "ADX" in latest:
             val = latest["ADX"]
             if val < 20:
@@ -379,7 +403,8 @@ for symbol in symbols:
                 comment_map["ADX"] = f"🟡 追随｜トレンド発生中（流れに乗る場面）"
             else:
                 comment_map["ADX"] = f"🟡 過熱｜トレンド過熱（反転に注意）"
-        # ✅ RSI コメント（買われすぎ・売られすぎ判定）
+
+        # ✅ RSI
         if "RSI" in latest and "RSI" in previous:
             val, prev_val = latest["RSI"], previous["RSI"]
             diff = val - prev_val
@@ -403,7 +428,8 @@ for symbol in symbols:
                 comment_map["RSI"] = f"買い｜売られすぎ（{trend} / 割安度：{strength}）"
             else:
                 comment_map["RSI"] = f"中立｜明確なシグナルなし（{trend} / 前日比{diff:+.2f}）"
-        # ストキャス
+
+        # ✅ ストキャスティクス
         if "STOCH_K" in latest and "STOCH_D" in latest:
             k, d = latest["STOCH_K"], latest["STOCH_D"]
             if k < 20 and k > d:
@@ -411,7 +437,9 @@ for symbol in symbols:
             elif k > 80 and k < d:
                 comment_map["ストキャス（%K）"] = f"売り｜%K={k:.2f} < %D={d:.2f}"
             else:
+                trend = "横ばい"
                 comment_map["ストキャス（%K）"] = f"中立｜%K={k:.2f}（{trend}中）"
+
         if "STOCH_D" in latest and "STOCH_D" in previous:
             d_val, prev_d_val = latest["STOCH_D"], previous["STOCH_D"]
             diff = d_val - prev_d_val
@@ -422,33 +450,27 @@ for symbol in symbols:
                 comment_map["ストキャス（%D）"] = f"買い｜%D={d_val:.2f}（{trend}中）"
             else:
                 comment_map["ストキャス（%D）"] = f"中立｜%D={d_val:.2f}（{trend}中）"
-        # ✅ ボリンジャーバンドによるシグナル判定
-            if all(k in latest for k in ["Close", "BB_High", "BB_Low", "BB_MAVG"]):
-                close = latest["Close"]
-                bb_high = latest["BB_High"]
-                bb_low = latest["BB_Low"]
-                bb_mid = latest["BB_MAVG"]
-                band_width = bb_high - bb_low
-                diff_from_mid = close - bb_mid  # 終値との差分（円）
+
+        # ✅ ボリンジャーバンド
+        if all(k in latest for k in ["Close", "BB_High", "BB_Low", "BB_MAVG"]):
+            close = latest["Close"]
+            bb_high = latest["BB_High"]
+            bb_low = latest["BB_Low"]
+            bb_mid = latest["BB_MAVG"]
+            band_width = bb_high - bb_low
+            diff_from_mid = close - bb_mid
 
             if close > bb_high:
                 comment_map["BB上限"] = f"売り｜株価（終値）={close:.2f} > BB上限{bb_high:.2f}（買われすぎ）"
             elif close < bb_low:
                 comment_map["BB下限"] = f"買い｜株価（終値）={close:.2f} < BB下限{bb_low:.2f}（売られすぎ）"
             else:
-                deviation = (close - (bb_high + bb_low)/2) / band_width * 100  # 中央との偏差率
+                deviation = (close - (bb_high + bb_low) / 2) / band_width * 100
                 comment_map["BB中央"] = f"中立｜乖離={diff_from_mid:+.2f}円（終値={close:.2f} ）"
 
-        # ✅ コメント列統合
-        def emphasize(val):
-            if "買い" in val:
-                return f"🟢 {val}"
-            elif "売り" in val:
-                return f"🔴 {val}"
-            elif "中立" in val:
-                return f"🟡 {val}"
-            return val
+  ######### 指標判断-END- #########
 
+        # ✅ テーブル_表示処理
         styled_table = []
         for row in table_data:
             label = row[0]
@@ -456,30 +478,19 @@ for symbol in symbols:
             styled_row = row + [emphasize(comment)]
             styled_table.append(styled_row)
 
+        # ✅ テーブル_見栄え設定
         from IPython.display import HTML
 
-        # ✅ DataFrame へ変換
         df_table = pd.DataFrame(styled_table, columns=["指標"] + date_labels + ["コメント"])
 
-        # ✅ スタイル定義
         styler = df_table.style.set_properties(**{'text-align': 'right'})
         styler = styler.set_properties(subset=["コメント"], **{'text-align': 'left'})
-
-        # ✅ 枠線をCSSで追加（全セルに border を適用）
-        styler = styler.set_table_styles(
-            [
-                {"selector": "table", "props": [("border-collapse", "separate"), ("border-spacing", "0px")]},  # ← ここ！
-                {"selector": "th", "props": [("border", "1px solid black"), ("text-align", "center")]},
-                {"selector": "td", "props": [("border", "1px solid black")]}
-            ]
-        )
-
-        # ✅ 銘柄名（escape=Falseで絵文字も表示）
-        display(HTML(f"<h4>{name}（{symbol}）｜取得日: {today_str}</h4>"))
-        display(HTML(f"✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）"))
-        display(HTML(styler.to_html(escape=False)))
-
-        # ✅ 総合シグナル
+        styler = styler.set_table_styles([
+            {"selector": "table", "props": [("border", "0px solid #gainsboro"), ("border-spacing", "0px")]},
+            {"selector": "th", "props": [("border", "0px solid black"), ("text-align", "center")]},
+            {"selector": "td", "props": [("border", "0px solid black")]}
+        ])
+        # ✅ 総合シグナル評価（先に計算してから表示）
         buy_signals = sum("買い" in c for c in comment_map.values())
         sell_signals = sum("売り" in c for c in comment_map.values())
         if buy_signals > sell_signals:
@@ -488,6 +499,22 @@ for symbol in symbols:
             overall = "🔽 売り優勢"
         else:
             overall = "⏸ 中立・様子見"
+
+        # ✅ テーブル_表示（escape=False で絵文字も表示）
+        display(HTML(f"<h4>{name}（{symbol}）｜取得日: {today_str}</h4>"))
+        #display(HTML(f"<p><b>✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）</p>"))
+
+        from IPython.display import HTML
+
+        #display(HTML(styler.to_html(escape=False)))
+        display(HTML(html)) 
+        #display(Image(chart_path))
+
+        comment_map = get_signal_comment(latest, previous)
+        score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
+        interpret_comment_map(comment_map, score)
+
+######### 3.テーブル-END- #########
 
         # 画像結合保存設定
         from PIL import Image as PILImage
@@ -533,14 +560,92 @@ for symbol in symbols:
             combined_img.paste(table_img, (0, 0))
             combined_img.paste(chart_img, (0, table_img.height))
 
-            # ✅ 保存
-            output_path = f"{save_folder}/{symbol}_{name}_{today_str}.jpg"
-            #combined_img.save(output_path)
-            combined_img.save(output_path, optimize=True, quality=70)
-            print(f"✅ 結合画像を保存しました：{output_path}")
+            # ✅ 保存フォルダとファイル名を先に定義
+            save_folder = f"/content/drive/MyDrive/ColabNotebooks/銘柄分析/{symbol}_{name}"
+            os.makedirs(save_folder, exist_ok=True)
+            combined_path = f"{save_folder}/{symbol}_{name}_{today_str}.jpg"
 
-        if SHOW_SAVE_CHART:
-            save_combined_chart_and_table(chart_path, full_html, combined_path)
+            # ✅ full_html を定義（←これも必須！）
+            full_html = f"""
+            <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
+            <p><b>✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）</p>
+            {styler.to_html(escape=False)}
+            """
+
+            # ✅ 保存実行
+            if SHOW_SAVE_CHART:
+                save_combined_chart_and_table(chart_path, full_html, combined_path)
 
     except Exception as e:
         print(f"❌ エラー: {symbol} - {e}")
+
+######### ループ-END- #########
+
+
+
+
+【外部ファイル】
+
+from IPython.display import display, HTML
+import pandas as pd
+
+def interpret_comment_map(comment_map, score):
+    buy_rows = []
+    sell_rows = []
+    total_buy = 0
+    total_sell = 0
+
+    for key, comment in comment_map.items():
+        if key.startswith("✅"):
+            continue
+        if "買い" in comment:
+            reason = comment.split("｜")[1] if "｜" in comment else comment
+            pt = _extract_score(key, comment)
+            buy_rows.append([key, reason, f"{pt:+.1f}点"])
+            total_buy += pt
+        elif "売り" in comment:
+            reason = comment.split("｜")[1] if "｜" in comment else comment
+            pt = _extract_score(key, comment)
+            sell_rows.append([key, reason, f"{pt:+.1f}点"])
+            total_sell += pt
+
+    # 合計行を追加
+    buy_rows.append(["合計", "", f"{total_buy:+.1f}点"])
+    sell_rows.append(["合計", "", f"{total_sell:+.1f}点"])
+
+    # DataFrame に変換して HTML 化
+    buy_df = pd.DataFrame(buy_rows, columns=["指標", "内容", "スコア"])
+    sell_df = pd.DataFrame(sell_rows, columns=["指標", "内容", "スコア"])
+
+    # 判定ロジック
+    if score >= 5:
+        conclusion = "✅ 試し買い（上昇トレンド明確）"
+    elif score >= 2:
+        conclusion = "👀 様子見（反転兆候あり）"
+    elif score <= -5:
+        conclusion = "❌ 見送り（下落トレンド強い）"
+    elif score <= -2:
+        conclusion = "❌ 見送り（売り優勢）"
+    else:
+        conclusion = "👀 様子見（方向感に欠ける）"
+
+    # HTML表示
+    display(HTML("<h3>📈【買い目線シグナル】</h3>"))
+    display(HTML(buy_df.to_html(index=False, escape=False)))
+
+    display(HTML("<h3>🔍【売り目線シグナル】</h3>"))
+    display(HTML(sell_df.to_html(index=False, escape=False)))
+
+    display(HTML(f"<h3>💬【判定コメント】</h3><p>{comment_map.get('✅ 総合評価', '総合評価なし')}</p>"))
+    display(HTML(f"<h3>✅【最終結論】：{conclusion}</h3>"))
+
+# スコアの簡易マッピング（指標名ベース）
+def _extract_score(key, comment=""):
+    score_table = {
+        "5DMA": 2, "超GC": 2.5, "超DC": -2.5, "MACD": 2,
+        "RSI": 1.5, "ADX": 1, "BB": 1, "ストキャス": 1, "出来高": 0.5,
+    }
+    for k, v in score_table.items():
+        if k in key:
+            return v if "買い" in comment else -v
+    return 0
