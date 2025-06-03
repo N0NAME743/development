@@ -1,4 +1,24 @@
-# 📘 日本株スイングトレード分析スクリプト（修正済み）
+##### Memo
+📘 日本株スイングトレード分析スクリプト_v1.01
+
+[仕組み]
+1.Googleドライブに保存しているスプレット上に「銘柄コード」を入力
+2.Google Colab上で、このスクリプトを実行すると
+    「株価データ」、「テクニカル情報」などを（表＋チャート）画像として、出力
+[対応指標]
+・移動平均線
+・移動平均線乖離
+・出来高
+・MACD
+・RSI
+・ADX
+[実装機能]
+    ver1.00
+    ・Googleドライブとの連携
+    ver1.01
+    ・表示フラグで、画像の保存オン・オフ機能を実装
+
+##### Memo_END
 
 # ✅ Google Colabで必須ファイルを手動インストール
 !apt-get -y install fonts-noto-cjk
@@ -197,8 +217,9 @@ for symbol in symbols:
         for text in fig.texts:
             text.set_fontproperties(jp_font)
 
-        fig.savefig(chart_path, dpi=150)
-        plt.close(fig)
+        if SHOW_SAVE_CHART:
+            fig.savefig(chart_path, dpi=150)
+            plt.close(fig)
 
         if not os.path.exists(chart_path):
             raise FileNotFoundError(f"チャート画像の保存に失敗しました: {chart_path}")
@@ -458,9 +479,6 @@ for symbol in symbols:
         display(HTML(f"✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）"))
         display(HTML(styler.to_html(escape=False)))
 
-        # 🔽 これを追加すればColabにチャートが表示される
-        display(fig)
-
         # ✅ 総合シグナル
         buy_signals = sum("買い" in c for c in comment_map.values())
         sell_signals = sum("売り" in c for c in comment_map.values())
@@ -521,7 +539,8 @@ for symbol in symbols:
             combined_img.save(output_path, optimize=True, quality=70)
             print(f"✅ 結合画像を保存しました：{output_path}")
 
-        save_combined_chart_and_table(chart_path, full_html, combined_path)
+        if SHOW_SAVE_CHART:
+            save_combined_chart_and_table(chart_path, full_html, combined_path)
 
     except Exception as e:
         print(f"❌ エラー: {symbol} - {e}")
