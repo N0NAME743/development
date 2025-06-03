@@ -1,32 +1,3 @@
-##### Memo
-📘 日本株スイングトレード分析スクリプト
-
-[仕組み]
-1.Googleドライブに保存しているスプレット上に「銘柄コード」を入力
-2.Google Colab上で、このスクリプトを実行すると
-    「株価データ」、「テクニカル情報」などを（表＋チャート）画像として、出力
-[対応指標]
-・移動平均線
-・移動平均線乖離
-・出来高
-・MACD
-・RSI
-・ADX
-[実装機能]
-    ver1.00
-    ・Googleドライブとの連携
-    ver1.01
-    ・表示フラグで、画像の保存オン・オフ機能を実装
-    ver1.02
-    ・コードの見栄えを少し修正した。
-    ・外部ファイルのコードを末尾に追記
-[未実装機能]
-    ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
-    「今回のシグナルの信頼度（スコア）」を出力するのが目的です。
-    ・
-
-##### Memo_END
-
 import imgkit
 import io
 import numpy as np
@@ -101,7 +72,7 @@ SHOW_ADX = 1
 SHOW_MACD = 1
 SHOW_STOCH = 1
 SHOW_BB = 1
-SHOW_SAVE_CHART = 0
+SHOW_SAVE_CHART = 1
 
 ######### 1.ループ-START- #########
 
@@ -486,10 +457,22 @@ for symbol in symbols:
         styler = df_table.style.set_properties(**{'text-align': 'right'})
         styler = styler.set_properties(subset=["コメント"], **{'text-align': 'left'})
         styler = styler.set_table_styles([
-            {"selector": "table", "props": [("border", "0px solid #gainsboro"), ("border-spacing", "0px")]},
-            {"selector": "th", "props": [("border", "0px solid black"), ("text-align", "center")]},
-            {"selector": "td", "props": [("border", "0px solid black")]}
+            {"selector": "table", "props": [("border-collapse", "collapse"), ("border", "0px solid #ccc")]},
+            {"selector": "th", "props": [("border", "1px solid #ccc"), ("background-color", "#f0f0f0"), ("text-align", "center")]},
+            {"selector": "td", "props": [("border", "1px solid #ccc"), ("padding", "4px")]}
         ])
+
+        # ✅ collapseを強制適用する！
+        styler = styler.set_table_attributes('style="border-collapse: collapse; border: 1px solid #ccc;"')
+
+        # ✅ full_html を定義（←これも必須！）
+
+        full_html = f"""
+        <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
+        <p><b>✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）</p>
+        {styler.to_html(escape=False)}
+        """
+
         # ✅ 総合シグナル評価（先に計算してから表示）
         buy_signals = sum("買い" in c for c in comment_map.values())
         sell_signals = sum("売り" in c for c in comment_map.values())
@@ -501,20 +484,15 @@ for symbol in symbols:
             overall = "⏸ 中立・様子見"
 
         # ✅ テーブル_表示（escape=False で絵文字も表示）
-        display(HTML(f"<h4>{name}（{symbol}）｜取得日: {today_str}</h4>"))
-        #display(HTML(f"<p><b>✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）</p>"))
-
         from IPython.display import HTML
 
         #display(HTML(styler.to_html(escape=False)))
-        display(HTML(html)) 
+        display(HTML(full_html))
         #display(Image(chart_path))
 
-        comment_map = get_signal_comment(latest, previous)
-        score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
-        interpret_comment_map(comment_map, score)
-
-######### 3.テーブル-END- #########
+        #comment_map = get_signal_comment(latest, previous)
+        #score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
+        #interpret_comment_map(comment_map, score)
 
         # 画像結合保存設定
         from PIL import Image as PILImage
@@ -560,92 +538,22 @@ for symbol in symbols:
             combined_img.paste(table_img, (0, 0))
             combined_img.paste(chart_img, (0, table_img.height))
 
-            # ✅ 保存フォルダとファイル名を先に定義
-            save_folder = f"/content/drive/MyDrive/ColabNotebooks/銘柄分析/{symbol}_{name}"
+            # ✅ まず保存フォルダの中身を作る
+            save_folder = f"/content/drive/MyDrive/ColabNotebooks/銘柄分析/{symbol}_{safe_name}"
+            # ✅ フォルダを作成（中身が決まってから！）
             os.makedirs(save_folder, exist_ok=True)
-            combined_path = f"{save_folder}/{symbol}_{name}_{today_str}.jpg"
+            # ✅ ファイル名を作る
+            output_path = f"{save_folder}/{symbol}_{name}_{today_str}.jpg"
+            # ✅ 保存
+            combined_img.save(output_path, optimize=True, quality=70)
+            print(f"✅ 結合画像を保存しました：{output_path}")
 
-            # ✅ full_html を定義（←これも必須！）
-            full_html = f"""
-            <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
-            <p><b>✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）</p>
-            {styler.to_html(escape=False)}
-            """
+        if SHOW_SAVE_CHART:
+            save_combined_chart_and_table(chart_path, full_html, combined_path)
 
-            # ✅ 保存実行
-            if SHOW_SAVE_CHART:
-                save_combined_chart_and_table(chart_path, full_html, combined_path)
+######### 3.テーブル-END- #########
 
     except Exception as e:
         print(f"❌ エラー: {symbol} - {e}")
 
 ######### ループ-END- #########
-
-
-
-
-【外部ファイル】
-
-from IPython.display import display, HTML
-import pandas as pd
-
-def interpret_comment_map(comment_map, score):
-    buy_rows = []
-    sell_rows = []
-    total_buy = 0
-    total_sell = 0
-
-    for key, comment in comment_map.items():
-        if key.startswith("✅"):
-            continue
-        if "買い" in comment:
-            reason = comment.split("｜")[1] if "｜" in comment else comment
-            pt = _extract_score(key, comment)
-            buy_rows.append([key, reason, f"{pt:+.1f}点"])
-            total_buy += pt
-        elif "売り" in comment:
-            reason = comment.split("｜")[1] if "｜" in comment else comment
-            pt = _extract_score(key, comment)
-            sell_rows.append([key, reason, f"{pt:+.1f}点"])
-            total_sell += pt
-
-    # 合計行を追加
-    buy_rows.append(["合計", "", f"{total_buy:+.1f}点"])
-    sell_rows.append(["合計", "", f"{total_sell:+.1f}点"])
-
-    # DataFrame に変換して HTML 化
-    buy_df = pd.DataFrame(buy_rows, columns=["指標", "内容", "スコア"])
-    sell_df = pd.DataFrame(sell_rows, columns=["指標", "内容", "スコア"])
-
-    # 判定ロジック
-    if score >= 5:
-        conclusion = "✅ 試し買い（上昇トレンド明確）"
-    elif score >= 2:
-        conclusion = "👀 様子見（反転兆候あり）"
-    elif score <= -5:
-        conclusion = "❌ 見送り（下落トレンド強い）"
-    elif score <= -2:
-        conclusion = "❌ 見送り（売り優勢）"
-    else:
-        conclusion = "👀 様子見（方向感に欠ける）"
-
-    # HTML表示
-    display(HTML("<h3>📈【買い目線シグナル】</h3>"))
-    display(HTML(buy_df.to_html(index=False, escape=False)))
-
-    display(HTML("<h3>🔍【売り目線シグナル】</h3>"))
-    display(HTML(sell_df.to_html(index=False, escape=False)))
-
-    display(HTML(f"<h3>💬【判定コメント】</h3><p>{comment_map.get('✅ 総合評価', '総合評価なし')}</p>"))
-    display(HTML(f"<h3>✅【最終結論】：{conclusion}</h3>"))
-
-# スコアの簡易マッピング（指標名ベース）
-def _extract_score(key, comment=""):
-    score_table = {
-        "5DMA": 2, "超GC": 2.5, "超DC": -2.5, "MACD": 2,
-        "RSI": 1.5, "ADX": 1, "BB": 1, "ストキャス": 1, "出来高": 0.5,
-    }
-    for k, v in score_table.items():
-        if k in key:
-            return v if "買い" in comment else -v
-    return 0
