@@ -1,6 +1,3 @@
-##### Memo
-📘 日本株スイングトレード分析スクリプト
-
 [仕組み]
 1.Googleドライブに保存しているスプレット上に「銘柄コード」を入力
 2.Google Colab上で、このスクリプトを実行すると
@@ -24,6 +21,9 @@
     ver1.20｜コード修正途中
     ・コードの中身を整えて、不要なコード等を削除した。
     ・旧テーブル表記（Styler）を削除し、HTMLテーブルで画像の保存処理を作った。
+    ver1.21
+    ・コードの順序を整理した。
+    ・チャートの表示を微調整＋タイトル／サブタイトルを表示するようにした。
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
     「今回のシグナルの信頼度（スコア）」を出力するのが目的です。
@@ -274,7 +274,7 @@ for symbol in symbols:
             df["MA25_Deviation"] = (df["Close"] - df["MA25"]) / df["MA25"] * 100
         df_filtered = df.dropna().copy()
         df_recent = df_filtered[-60:]
-        df_recent = df_recent.copy() 
+        df_recent = df_recent.copy()
         if df_recent.empty:
             print(f"⚠️ {symbol} はデータ不足でスキップ")
             continue
@@ -371,9 +371,32 @@ for symbol in symbols:
             style="yahoo",
             volume=True,
             addplot=add_plots,
+            scale_padding={'left': 0.25, 'right': 0.75},  # 余白を最小限に
             panel_ratios=panel_ratios,
             figsize=(14, 8),
             returnfig=True
+        )
+        # メインタイトル文字列を定義
+        title = f"{name}（{symbol}）株価チャート（直近60日） - {today_str}"
+        # 描画後の axlist[0] にタイトルを設定
+        axlist[0].set_title(
+            title,
+            fontproperties=jp_font,
+            fontsize=16,
+            pad=20
+        )
+        # メインチャートの上にサブタイトルを表示（左寄せや中央にできる）
+        subtitle = f"対象期間：{df.index[0].strftime('%Y/%m/%d')} ～ {df.index[-1].strftime('%Y/%m/%d')}｜傾向：下降トレンド継続中"
+        # axlist[0] 上部にテキスト追加（座標: x=0.5, y=1.08 は上部中央）
+        axlist[0].text(
+            0.5, 1.07,  # X, Y（0～1の相対値）
+            subtitle,
+            transform=axlist[0].transAxes,  # 軸に対して相対位置
+            ha='center',                    # 水平中央揃え
+            va='top',                       # 垂直上揃え
+            fontsize=12,
+            fontproperties=jp_font,
+            color='dimgray'
         )
         fig.subplots_adjust(left=0.05, right=0.95)
         fig.savefig("chart_output.png", dpi=150, bbox_inches="tight")
@@ -407,7 +430,7 @@ for symbol in symbols:
 
         # レイアウトと保存
         try:
-            fig.tight_layout() 
+            fig.tight_layout()
         except Exception as e:
             print(f"[警告] tight_layout に失敗しました: {e}")
         chart_path = f"{symbol}_{name}_{today_str}.png"
@@ -446,6 +469,15 @@ for symbol in symbols:
         # 利用例
         score = 0
         comment_map = {}
+
+        # ========= 1. データ取得と整形 =========
+        # df_recent_week の定義
+        df_recent_week = df.tail(7)
+
+        # ========= 2. 最新・前日データの抽出 =========
+        # 最新・前日データの定義
+        latest = df.iloc[-1]
+        previous = df.iloc[-2]
 
         # 株価終値・出来高
         diff = latest["Close"] - previous["Close"]
@@ -640,10 +672,6 @@ for symbol in symbols:
         # DataFrameに変換
         df_table = pd.DataFrame(table_data, columns=["指標"] + date_labels)
 
-        # コメント列を追加
-        comment_list = [emphasize(comment_map.get(row[0], "")) for row in table_data]
-        df_table["コメント"] = comment_list
-
         # コメントにアイコンを付与
         def emphasize(val):
             if "買い" in val:
@@ -654,26 +682,10 @@ for symbol in symbols:
                 return f"🟡 {val}"
             return val
 
-        # HTML化（1行コメント追加）
-        html_table = df_table.to_html(index=False, escape=False)
-        colspan = len(df_table.columns)
-        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">✅ 総合評価：買い傾向（スコア: 7.0）</td></tr>'
-        html_table_with_summary = html_table.replace('</table>', f'{summary_row}</table>')
+        # コメント列を追加
+        comment_list = [emphasize(comment_map.get(row[0], "")) for row in table_data]
+        df_table["コメント"] = comment_list
 
-        # ✔️ 正しく構造化されたHTML文字列を作る
-        html_table = f"""
-        <html>
-        <head>
-        <meta charset="utf-8">
-        {style}  <!-- ✅ CSSをここに含める -->
-        </head>
-        <body>
-        <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
-        <!--<p><b>✅ 総合シグナル：</b> {overall}（買い: {buy_signals}｜売り: {sell_signals}）</p>-->
-        {html_table_with_summary}  <!-- ✅ 1行評価付きテーブル -->
-        </body>
-        </html>
-        """
         # CSS（コメント列を左寄せ）
         style = """
         <style>
@@ -690,6 +702,26 @@ for symbol in symbols:
           text-align: left !important;
         }
         </style>
+        """
+
+        # HTML化（1行コメント追加）
+        html_table = df_table.to_html(index=False, escape=False)
+        colspan = len(df_table.columns)
+        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">✅ 総合評価：買い傾向（スコア: 7.0）</td></tr>'
+        html_table_with_summary = html_table.replace('</table>', f'{summary_row}</table>')
+
+        # ✔️ 正しく構造化されたHTML文字列を作る
+        html_table = f"""
+        <html>
+        <head>
+        <meta charset="utf-8">
+        {style}  <!-- ✅ CSSをここに含める -->
+        </head>
+        <body>
+        <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
+        {html_table_with_summary}  <!-- ✅ 1行評価付きテーブル -->
+        </body>
+        </html>
         """
         final_html = style + html_table_with_summary
         display(Image(chart_path))  # チャート画像を表示
@@ -710,9 +742,9 @@ for symbol in symbols:
             save_pdf=False
         )
 
-######### 4.テーブル-END 
+######### 4.テーブル-END
 
     except Exception as e:
         print(f"❌ エラー: {symbol} - {e}")
 
-######### 1.ループ-END 
+######### 1.ループ-END
