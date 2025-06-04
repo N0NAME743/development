@@ -1,3 +1,6 @@
+##### Memo
+📘 日本株スイングトレード分析スクリプト
+
 [仕組み]
 1.Googleドライブに保存しているスプレット上に「銘柄コード」を入力
 2.Google Colab上で、このスクリプトを実行すると
@@ -24,6 +27,9 @@
     ver1.21
     ・コードの順序を整理した。
     ・チャートの表示を微調整＋タイトル／サブタイトルを表示するようにした。
+    ver.1.22
+    ・総合評価の部分を末尾から「チャート」、「表」の真ん中に移動させた。
+    ・スコアのコードを自動で算出するようにした（※要調整）
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
     「今回のシグナルの信頼度（スコア）」を出力するのが目的です。
@@ -382,8 +388,8 @@ for symbol in symbols:
         axlist[0].set_title(
             title,
             fontproperties=jp_font,
-            fontsize=16,
-            pad=20
+            fontsize=15,
+            pad=20,
         )
         # メインチャートの上にサブタイトルを表示（左寄せや中央にできる）
         subtitle = f"対象期間：{df.index[0].strftime('%Y/%m/%d')} ～ {df.index[-1].strftime('%Y/%m/%d')}｜傾向：下降トレンド継続中"
@@ -633,6 +639,9 @@ for symbol in symbols:
         else:
             add_comment(comment_map, "ADX", "中立", "過熱｜トレンド過熱（反転に注意）")
 
+        # 総合評価
+        comment_map["✅ 総合評価"] = f"スコア: {score:.1f}"
+
 ######### 3.コメント（指標判断）-END
 
 ######### 4.テーブル-START
@@ -704,32 +713,65 @@ for symbol in symbols:
         </style>
         """
 
-        # HTML化（1行コメント追加）
-        html_table = df_table.to_html(index=False, escape=False)
-        colspan = len(df_table.columns)
-        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">✅ 総合評価：買い傾向（スコア: 7.0）</td></tr>'
-        html_table_with_summary = html_table.replace('</table>', f'{summary_row}</table>')
+        # ✅ 初期化
+        summary_text = "⚠️ 総合評価：評価情報が取得できません（スコア未算出）"
+        score = 0.0
 
-        # ✔️ 正しく構造化されたHTML文字列を作る
+        # ✅ 安全にスコアを抽出
+        if "✅ 総合評価" in comment_map:
+            try:
+                score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
+                summary_text = generate_summary_comment(score)
+            except Exception as e:
+                print(f"⚠️ 評価の解析中にエラーが発生: {e}")
+        else:
+            print(f"⚠️ {symbol} - '✅ 総合評価' が見つかりません")
+
+        # ✅ 総合評価コメントを動的に生成
+        def generate_summary_comment(score):
+            if score >= 7:
+                return f"✅ 総合評価：買い傾向（スコア: {score:.1f}）"
+            elif score >= 4:
+                return f"⚠️ 総合評価：やや買い（スコア: {score:.1f}）"
+            elif score >= 1:
+                return f"😐 総合評価：中立（スコア: {score:.1f}）"
+            elif score >= -2:
+                return f"⚠️ 総合評価：やや売り（スコア: {score:.1f}）"
+            else:
+                return f"❌ 総合評価：売り傾向（スコア: {score:.1f}）"
+
+        # ✅ scoreから生成された summary_text を使う
+        colspan = len(df_table.columns)
+        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">{summary_text}</td></tr>'
+
+        # ✅ HTMLパーツに反映
+        summary_html = f"""
+        <p style="text-align:center; font-weight:bold; background:#eef; padding: 6px;">
+        {summary_text}
+        </p>
+        """
+        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">{summary_text}</td></tr>'
+
+        # ✅ テーブル末尾には評価行を追加しない
+        html_table_with_summary = df_table.to_html(index=False, escape=False)
+
+        # ✅ 表全体のHTML構造
         html_table = f"""
         <html>
         <head>
         <meta charset="utf-8">
-        {style}  <!-- ✅ CSSをここに含める -->
+        {style}  <!-- ✅ CSS -->
         </head>
         <body>
         <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
-        {html_table_with_summary}  <!-- ✅ 1行評価付きテーブル -->
+        {html_table_with_summary}
         </body>
         </html>
         """
-        final_html = style + html_table_with_summary
-        display(Image(chart_path))  # チャート画像を表示
-        display(HTML(final_html))   # 表とCSSを表示
-
-        #comment_map = get_signal_comment(latest, previous)
-        #score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
-        #interpret_comment_map(comment_map, score)
+        # ✅ 表示順を指定
+        display(Image(chart_path))          # ① チャート
+        display(HTML(summary_html))         # ② 総合評価だけ別表示（中間に！）
+        display(HTML(html_table))           # ③ テーブル全体
 
         # 👉 関数に渡すときはこれ！
         save_combined_chart_and_table(
