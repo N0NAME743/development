@@ -1,4 +1,3 @@
-
 ##### Memo
 📘 日本株スイングトレード分析スクリプト
 
@@ -39,6 +38,9 @@
     ver2.00
     ・Comment部の内容を大幅に修正し、スコア表示されるように対応した。
     ・支持線、抵抗線をテーブルに追記＋判定ルール（コメント）を追加
+    ver2.01
+    ・総合評価コメントブロックを追加した。
+    ・表示がバグってる・・・※要修正
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
 ##### Memo_END
@@ -132,8 +134,8 @@ SHOW_STOCH = 1
 SHOW_BB = 1
 SHOW_SAVE_CHART = 1
 
-## 定義・関数
-# 1. ユーティリティ系関数：数値をK/M/Bで省略表示
+## 補助・関数群
+# ユーティリティ系関数：数値をK/M/Bで省略表示
 def abbreviate_number(n):
     if n >= 1_000_000_000:
         return f"{n / 1_000_000_000:.2f}B"
@@ -143,69 +145,8 @@ def abbreviate_number(n):
         return f"{n / 1_000:.2f}K"
     else:
         return str(n)
-# 2. コメント生成関数
 
-def generate_summary_comment(comment_map, score):
-    buy_comments = []
-    sell_comments = []
-
-    for key, comment in comment_map.items():
-        # 条件分岐してコメント分類
-        ...
-
-    if score >= 5:
-        summary = "..."
-    elif score >= 2:
-        summary = "..."
-    elif score <= -5:
-        summary = "..."
-    elif score <= -2:
-        summary = "..."
-    else:
-        summary = "..."
-
-    html = "<div>...</div>"
-    return html
-
-def generate_summary_comment(comment_map, score):
-    buy_comments = []
-    sell_comments = []
-
-    # 買い・売りコメントを整理
-    for key, comment in comment_map.items():
-        if "買い" in comment:
-            buy_comments.append(f"<li>{key}：{comment}</li>")
-        elif "売り" in comment:
-            sell_comments.append(f"<li>{key}：{comment}</li>")
-
-    # 総評コメントのロジック（戦略提案込み）
-    if score >= 5:
-        summary = ("強い買いシグナルが複数確認され、上昇トレンドが明確です。"
-                  "短期の押し目を狙った買いが有効と考えられます。")
-    elif score >= 2:
-        summary = ("買いシグナルがやや優勢で、反転の兆しが見え始めています。"
-                  "ただし、出来高や過熱感に注意しながら、慎重なエントリーを心がけましょう。")
-    elif score <= -5:
-        summary = ("複数の売りシグナルにより、明確な下落トレンドが形成されています。"
-                  "ここでのエントリーは避け、反発の兆候が見えるまで様子を見る戦略が賢明です。")
-    elif score <= -2:
-        summary = ("売りシグナルがやや優勢で、下方向へのリスクが高まっています。"
-                  "ポジションを軽くするか、新規エントリーは見送るのが安全です。")
-    else:
-        summary = ("買い・売りが拮抗しており、明確な方向感に欠ける相場です。"
-                  "トレンドが明確になるまで静観し、過剰な取引を避けましょう。")
-
-    # HTML形式で見やすく出力
-    html = "<div style='font-size:14px; line-height:1.6em;'>"
-    if buy_comments:
-        html += "<b>🟢 買い目線の要因：</b><ul>" + "".join(buy_comments) + "</ul><br>"
-    if sell_comments:
-        html += "<b>🔴 売り目線の要因：</b><ul>" + "".join(sell_comments) + "</ul><br>"
-    html += f"<b>⚖️ 総評と戦略：</b><p>{summary}</p></div>"
-
-    return html
-
-# 3. チャート＋テーブル保存関数
+# チャート＋テーブル保存関数
 """
 表（HTML）とチャート画像を結合し、JPGと必要に応じてPDFとして保存。
 """
@@ -279,6 +220,21 @@ def save_combined_chart_and_table(chart_path, html_table, output_dir, symbol, na
         combined_img.convert("RGB").save(pdf_path, "PDF", resolution=100.0)
         print(f"📄 PDFとしても保存しました：{pdf_path}")
 
+# コメントマップに追加する関数
+def add_comment(comment_map, key, signal, detail, note=""):
+    if key not in comment_map:
+        comment_map[key] = []
+    comment_map[key].append(f"{signal}：{detail} {note}".strip())
+
+# 信頼度と出来高を含む注釈を整形
+def format_note(strength, vol_increased=None):
+    note = f"[信頼度{strength}]"
+    if vol_increased is not None:
+        note += " 出来高増加" if vol_increased else " 出来高減少"
+    return note
+
+def is_crossed_up(cur, base, cur_prev, base_prev):
+    return cur > base and cur_prev <= base_prev
 
 ######### 1.ループ-START
 
@@ -567,6 +523,58 @@ for symbol in symbols:
 
 ######### 3.コメント（指標判断）-START
 
+        comment_map = {}  # 空の辞書として初期化
+
+        indicator_category_map = {
+            "支持線(直近20日)": "technical",
+            "支持線(直近60日)": "technical",
+            "抵抗線(直近20日)": "technical",
+            "抵抗線(直近60日)": "technical",
+            "5DMA": "technical",
+            "25DMA": "technical",
+            "75DMA": "technical",
+            "200DMA": "technical",
+            "25日乖離率（%）": "technical",
+            "RSI": "technical",
+            "MACD": "technical",
+            "ADX（+DI/-DI）": "technical",
+            "ストキャス（%K）": "technical",
+            "ストキャス（%D）": "technical",
+            "ストキャス総合": "technical",
+
+            # チャート系（chart）
+            "BB上限": "chart",
+            "BB下限": "chart",
+            "BB中央": "chart",
+
+            # ファンダメンタル（将来追加予定）
+            #"PER": "fundamental",
+            #"PBR": "fundamental",
+            #"EPS": "fundamental",
+            }
+            
+        # ✅ マッピング追加（推奨）
+        indicator_category_map.update({
+            "株価（終値）": "technical",
+            "出来高": "technical",
+        })
+
+        # ✅ 自動でカテゴリを付けるように関数を再定義
+        def add_comment(comment_map, key, signal, detail, note="", category=None):
+            if category is None:
+                category = indicator_category_map.get(key, "other")  # 自動でカテゴリを補完
+            # ✅ カテゴリ検証（警告出すだけ）
+            if category not in valid_categories:
+                print(f"⚠️ 未定義カテゴリ：{key} → '{category}'")
+            if key not in comment_map:
+                comment_map[key] = []
+            comment_map[key].append({
+                "signal": signal,
+                "detail": detail,
+                "note": note,
+                "category": category
+            })
+
         # ✅ スコアルール
         score_rules = {
             # 📉 サポート・レジスタンス
@@ -648,8 +656,13 @@ for symbol in symbols:
         def normalize_technical_score(raw_score, max_score=14.0):
             return min(round((raw_score / max_score) * 10, 1), 10.0)
 
-        def add_comment(comment_map, key, signal, detail, note="", category="technical"):
-            # 信頼度の抽出（あれば）
+        # ✅ カテゴリ自動付与とスコア加点付きの add_comment
+        def add_comment(comment_map, key, signal, detail, note="", category=None):
+            # 自動カテゴリ補完
+            if category is None:
+                category = indicator_category_map.get(key, "other")
+
+            # 信頼度の抽出（オプション）
             strength = ""
             if "信頼度" in note:
                 import re
@@ -657,19 +670,29 @@ for symbol in symbols:
                 if match:
                     strength = match.group(1)
 
-            # 信号の変換（買強／売弱など）
+            # 信号の変換
             if signal == "買い":
                 signal = "買強" if strength in ["強", "最強"] else "買弱"
             elif signal == "売り":
                 signal = "売強" if strength in ["強", "最強"] else "売弱"
 
-            # コメント登録
-            full_note = f" {note}" if note else ""
-            comment_map[key] = f"{signal}｜{detail}{full_note}".strip()
+            # ✅ コメントをリストで格納（文字列ではなく！）
+            if key not in comment_map or not isinstance(comment_map[key], list):
+                comment_map[key] = []
 
-            # スコア加点（score_rulesに存在する場合のみ）
+            comment_map[key].append({
+                "signal": signal,
+                "detail": detail,
+                "note": note,
+                "category": category
+            })
+
+            # ✅ スコア加点（categoryが不明ならスキップ）
             delta = score_rules.get(key, {}).get(signal, 0)
-            score_dict[category] += delta
+            if category in score_dict:
+                score_dict[category] += delta
+            else:
+                print(f"⚠️ スコア加点スキップ: '{key}' → '{category}'（delta={delta}）")
 
         # 定義
         df_recent_week = df.tail(7) # df_recent_week の定義
@@ -720,6 +743,42 @@ for symbol in symbols:
                 add_comment(comment_map, f"抵抗線(直近{window}日)", "中立", f"抵抗線との乖離{diff_str}")
  
         # Commnet：移動平均線
+        # ✅ MAクロス：GC／DC（5DMA・25DMA・75DMA・200DMAをペアに）
+        ma_pairs = [
+            ("5DMA", "25DMA", latest["MA5"], latest["MA25"], previous["MA5"], previous["MA25"], "短期"),
+            ("25DMA", "75DMA", latest["MA25"], latest["MA75"], previous["MA25"], previous["MA75"], "中期"),
+            ("75DMA", "200DMA", latest["MA75"], latest["MA200"], previous["MA75"], previous["MA200"], "長期"),
+        ]
+        for key, base_key, cur, base, cur_prev, base_prev, label in ma_pairs:
+            crossed_up = cur > base and cur_prev <= base_prev
+            crossed_down = cur < base and cur_prev >= base_prev
+            slope_cur = cur - cur_prev
+            slope_base = base - base_prev
+            slope_ok = slope_cur > 0 and slope_base > 0
+            diff = cur - base
+            diff_str = f"{label}クロス｜差={diff:+.2f}円"
+
+            strength = "弱"  # デフォルト
+
+            if crossed_up:
+                if slope_ok and vol_increased:
+                    strength = "最強"
+                elif slope_ok:
+                    strength = "強"
+                elif vol_increased:
+                    strength = "中"
+                note = format_note(strength, vol_increased)
+                add_comment(comment_map, key, "買い", f"{label}GC（{diff_str}）", note)
+            elif crossed_down:
+                if slope_cur < 0 and slope_base < 0 and vol_increased:
+                    strength = "最強"
+                elif vol_increased:
+                    strength = "強"
+                note = format_note(strength, vol_increased)
+                add_comment(comment_map, key, "売り", f"{label}DC（{diff_str}）", note)
+            else:
+                add_comment(comment_map, key, "中立", f"明確なクロスなし（{diff_str}）")
+
         # クロスが発生していたら add_comment() のみでスコア反映も完結
         if crossed_up:
             if slope_ok and vol_increased:
@@ -927,17 +986,67 @@ for symbol in symbols:
         total_score = sum(score_dict.values())
         normalized_score = normalize_technical_score(score_dict["technical"])
 
-        comment_map["✅ 総合評価"] = f"スコア: {total_score:.1f}"
-        comment_map["✅ テクニカル指標スコア"] = f"{normalized_score:.1f} / 10"
+        # スコア結果も他の指標と同じ構造に揃える
+        add_comment(comment_map, "✅ 総合評価", "中立", f"スコア: {total_score:.1f}")
+        add_comment(comment_map, "✅ テクニカル指標スコア", "中立", f"{normalized_score:.1f} / 10")
 
-        summary = generate_detailed_summary_block(
-            score=total_score,
-            technical_score=normalize_technical_score(score_dict["technical"]),
-            chart_score=normalize_technical_score(score_dict["chart"]),
-            fundamental_score=normalize_technical_score(score_dict["fundamental"]),
-            highlights=[v for k, v in comment_map.items() if not k.startswith("✅")]
-        )
-        print(summary)
+        def output_score_summary_html(score_dict):
+            def make_bar(score):
+                filled = int(round(score))
+                return "■" * filled + "□" * (10 - filled)
+
+            cat_scores = {}
+            for cat in ["chart", "technical", "fundamental"]:
+                raw = score_dict.get(cat, 0)
+                score = min(max(raw, 0), 10)
+                cat_scores[cat] = round(score, 1)
+
+            total_score = sum(cat_scores.values())
+            eval_text = (
+                "✅ 買い傾向" if total_score >= 21 else
+                "⚠️ やや買い" if total_score >= 15 else
+                "😐 中立" if total_score >= 10 else
+                "⚠️ やや売り" if total_score >= 5 else
+                "❌ 売り傾向"
+            )
+
+            # HTML生成
+            html = f"""
+            <h3>【総合評価】{eval_text}（スコア: {total_score:.1f} / 30点満点）</h3>
+            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: monospace;">
+              <thead style="background-color:#f0f0f0;">
+                <tr>
+                  <th>カテゴリ</th>
+                  <th>スコア</th>
+                  <th>評価バー</th>
+                </tr>
+              </thead>
+              <tbody>
+            """
+            for name_jp, key in zip(["チャート分析", "テクニカル分析", "ファンダメンタル分析"], ["chart", "technical", "fundamental"]):
+                score = cat_scores[key]
+                bar = make_bar(score)
+                html += f"<tr><td>{name_jp}</td><td>{score:.1f} / 10</td><td>{bar}</td></tr>"
+
+            html += "</tbody></table>"
+            display(HTML(html))
+
+
+
+        # ✅ チェック1：未定義カテゴリがないか確認（← ここに入れる！）
+        valid_categories = {"technical", "chart", "fundamental"}
+        for key, comments in comment_map.items():
+            for comment in comments:
+                cat = comment.get("category", "none")
+                if cat not in valid_categories:
+                    print(f"⚠️ 未定義カテゴリ: {key} → '{cat}'")
+
+        # ✅ チェック2（任意）：カテゴリごとの件数を集計したい場合
+        from collections import Counter
+        category_counter = Counter([c["category"] for v in comment_map.values() for c in v])
+        print("✅ カテゴリ別コメント数：")
+        for k, v in category_counter.items():
+            print(f"　- {k}: {v}件")
 
 ######### 3.コメント（指標判断）-END
 
@@ -1019,6 +1128,11 @@ for symbol in symbols:
 
             return f"color: {color}; font-weight: {weight}"
 
+        # ✅ コメントスタイルを行に適用する関数
+        def apply_row_style(row):
+            comment = row["コメント"]
+            return [get_style_by_comment(comment) if col != "指標" else "" for col in row.index]
+
         # ✅ スタイル適用版HTMLに変換
         styled_df = df_table.style.apply(apply_row_style, axis=1)
         html_table_with_summary = styled_df.to_html(render_links=False, escape=False)
@@ -1041,29 +1155,30 @@ for symbol in symbols:
         </style>
         """
 
-        # ✅ スコアに基づく総合評価生成
-        summary_text = "⚠️ 総合評価：評価情報が取得できません（スコア未算出）"
-        score = 0.0
+        # ✅ 最終HTML構成
+        full_html = f"""
+        <html>
+        <head>
+        <meta charset="utf-8">
+        {style}
+        </head>
+        <body>
+        <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
+        {summary_html}
+        {html_table_with_summary}
+        </body>
+        </html>
+        """
 
-        if "✅ 総合評価" in comment_map:
-            try:
-                score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
-                def generate_summary_comment(score):
-                    if score >= 7:
-                        return f"✅ 総合評価：買い傾向（スコア: {score:.1f}）"
-                    elif score >= 4:
-                        return f"⚠️ 総合評価：やや買い（スコア: {score:.1f}）"
-                    elif score >= 1:
-                        return f"😐 総合評価：中立（スコア: {score:.1f}）"
-                    elif score >= -2:
-                        return f"⚠️ 総合評価：やや売り（スコア: {score:.1f}）"
-                    else:
-                        return f"❌ 総合評価：売り傾向（スコア: {score:.1f}）"
-                summary_text = generate_summary_comment(score)
-            except Exception as e:
-                print(f"⚠️ 評価の解析中にエラーが発生: {e}")
-        else:
-            print(f"⚠️ {symbol} - '✅ 総合評価' が見つかりません")
+        save_combined_chart_and_table(
+            chart_path=chart_path,
+            html_table=full_html,  # ← ✅ ここに統合HTMLを渡す
+            output_dir="/content/drive/MyDrive/ColabNotebooks/銘柄分析",
+            symbol=symbol,
+            name=name,
+            today_str=today_str,
+            save_pdf=False
+        )
 
         # ✅ 表示用の総合評価パーツ
         summary_html = f"""
@@ -1072,35 +1187,12 @@ for symbol in symbols:
         </p>
         """
 
-        # ✅ 最終HTML構成
-        html_table = f"""
-        <html>
-        <head>
-        <meta charset="utf-8">
-        {style}
-        </head>
-        <body>
-        <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
-        {html_table_with_summary}
-        </body>
-        </html>
-        """
-
         # ✅ 表示
         display(Image(chart_path))        # ① チャート画像
         display(HTML(summary_html))       # ② 総合評価コメント
+        # ✅ スコア評価を出力（30点満点形式）
+        output_score_summary(score_dict)
         display(HTML(html_table))         # ③ テーブル本体
-
-        # ✅ 保存
-        save_combined_chart_and_table(
-            chart_path=chart_path,
-            html_table=html_table,
-            output_dir="/content/drive/MyDrive/ColabNotebooks/銘柄分析",
-            symbol=symbol,
-            name=name,
-            today_str=today_str,
-            save_pdf=False
-        )
 
 ######### 4.テーブル-END
 
