@@ -1,3 +1,4 @@
+
 ##### Memo
 📘 日本株スイングトレード分析スクリプト
 
@@ -35,6 +36,9 @@
     ・RSIのチャート上の表記方法を修正した（※要調整）
     ・テーブルのコメント欄の内容に応じて、セルの文字色を変えるようにした。
     ・コメント欄のアイコン表示を消す＋[買い/売り/中立]➡[買弱/買強/売弱/売強/中立]に変更
+    ver2.00
+    ・Comment部の内容を大幅に修正し、スコア表示されるように対応した。
+    ・支持線、抵抗線をテーブルに追記＋判定ルール（コメント）を追加
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
 ##### Memo_END
@@ -320,6 +324,11 @@ for symbol in symbols:
         if df_recent.empty:
             print(f"⚠️ {symbol} はデータ不足でスキップ")
             continue
+        from ta.trend import ADXIndicator
+        adx = ADXIndicator(high=df["High"], low=df["Low"], close=df["Close"], window=14)
+        df["ADX"] = adx.adx()
+        df["+DI"] = adx.adx_pos()
+        df["-DI"] = adx.adx_neg()
 
 ######### 2.チャート-START
 
@@ -558,10 +567,88 @@ for symbol in symbols:
 
 ######### 3.コメント（指標判断）-START
 
-        # コメントマップに安全かつ統一的に登録する関数
+        # ✅ スコアルール
+        score_rules = {
+            # 📉 サポート・レジスタンス
+            "支持線(直近20日)": {"買強": 2, "買弱": 1, "売強": -2, "売弱": -1},  # 支持線反発・割れ
+            "抵抗線(直近20日)": {"売強": -2, "売弱": -1, "買強": 2, "買弱": 1},  # 抵抗線突破・反落
+            # 📈 移動平均線
+            "5DMA": {"買強": 3, "買弱": 1, "売強": -3, "売弱": -1},    # トレンドの初動確認
+            "25DMA": {"買強": 2, "買弱": 1, "売強": -2, "売弱": -1},
+            "75DMA": {"買強": 2, "買弱": 1, "売強": -2, "売弱": -1},
+            # 🔄 乖離（平均線とのズレ）
+            "短期乖離": {"買強": 1, "売強": -1},             # 5日平均線からの離れすぎ
+            "25日乖離率（%）": {"買強": 1, "売強": -1},      # 25日平均線との±5%以上の乖離
+            # 📊 オシレーター系
+            "RSI": {"買強": 1, "売強": -1},                 # RSI30以下なら買い
+            "ストキャス（%K）": {"買強": 1, "売強": -1},
+            "ストキャス（%D）": {"買強": 1, "売強": -1},
+            "ストキャス総合": {"買強": 1, "売強": -1},       # GCで買い、DCで売り
+            "MACD": {"買強": 1, "売強": -1},                # GCで買い、DCで売り
+            # 🆕 その他
+            "ADX": {"買強": 1, "売強": -1},                 # トレンド強度（25以上）
+            "ADX（+DI/-DI）": {"買強": 1, "売強": -1},
+            "BB上限": {"売強": -1},
+            "BB下限": {"買強": 1},                          # BB下限で反発 → 買い
+        }
 
-        def add_comment(comment_map, key, signal, detail, note=""):
+        # ✅ スコア格納先（カテゴリ分け）
+        score_dict = {
+            "technical": 0,
+            "chart": 0,
+            "fundamental": 0
+        }
 
+        # ✅ スコアバー生成（10段階）
+        def score_bar(normalized_score):
+            filled = int(round(normalized_score))  # 5.7 → 6個
+            empty = 10 - filled
+            return "■" * filled + "□" * empty
+
+        # ✅ 総合評価コメント生成（scoreベースに対応）
+        def generate_detailed_summary_block(score, technical_score=0.0, chart_score=0.0, fundamental_score=0.0, highlights=None):
+            lines = []
+
+            # 総合評価の判定（scoreベース）
+            if score >= 7:
+                head = "✅ 総合評価：買い傾向"
+            elif score >= 4:
+                head = "⚠️ 総合評価：やや買い"
+            elif score >= 1:
+                head = "😐 総合評価：中立"
+            elif score >= -2:
+                head = "⚠️ 総合評価：やや売り"
+            else:
+                head = "❌ 総合評価：売り傾向"
+
+            normalized_score = normalize_technical_score(score)
+            lines.append(f"{head}（スコア: {score:.1f} / 正規化: {normalized_score:.1f}）")
+
+            # カテゴリ別スコアバー（チャート／テクニカル／ファンダ）
+            categories = [
+                ("チャート分析", chart_score),
+                ("テクニカル分析", technical_score),
+                ("ファンダメンタル分析", fundamental_score)
+            ]
+            for name, value in categories:
+                bar = score_bar(value)
+                lines.append(f"｜{name:<12}：{bar}（{value:.1f} / 10）")
+
+            # コメント要点
+            lines.append("｜要点：")
+            if highlights:
+                for h in highlights:
+                    lines.append(f"　・{h}")
+            else:
+                lines.append("　（コメント準備中）")
+
+            return "\n".join(lines)
+
+        # ✅ テクニカルスコア正規化関数（最大14点を基準に10点満点化）
+        def normalize_technical_score(raw_score, max_score=14.0):
+            return min(round((raw_score / max_score) * 10, 1), 10.0)
+
+        def add_comment(comment_map, key, signal, detail, note="", category="technical"):
             # 信頼度の抽出（あれば）
             strength = ""
             if "信頼度" in note:
@@ -569,164 +656,168 @@ for symbol in symbols:
                 match = re.search(r"信頼度(最強|強|中|弱)", note)
                 if match:
                     strength = match.group(1)
-            # 信号の変換（買強／買弱などに変換）
+
+            # 信号の変換（買強／売弱など）
             if signal == "買い":
                 signal = "買強" if strength in ["強", "最強"] else "買弱"
             elif signal == "売り":
                 signal = "売強" if strength in ["強", "最強"] else "売弱"
-            # 中立は変えない
 
+            # コメント登録
             full_note = f" {note}" if note else ""
             comment_map[key] = f"{signal}｜{detail}{full_note}".strip()
 
-        # 信頼度の分類とノートフォーマット関数
-        def judge_strength(gap_value, thresholds):
-            if gap_value > thresholds["強"]:
-                return "強"
-            elif gap_value > thresholds["中"]:
-                return "中"
-            else:
-                return "弱"
+            # スコア加点（score_rulesに存在する場合のみ）
+            delta = score_rules.get(key, {}).get(signal, 0)
+            score_dict[category] += delta
 
-        def format_note(strength, vol_increased):
-            vol_note = "出来高増" if vol_increased else ""
-            return f"[信頼度{strength}/{vol_note}]" if vol_note else f"[信頼度{strength}]"
-
-        # 利用例
-        score = 0
-        comment_map = {}
-
-        # ========= 1. データ取得と整形 =========
-        # df_recent_week の定義
-        df_recent_week = df.tail(7)
-
-        # ========= 2. 最新・前日データの抽出 =========
-        # 最新・前日データの定義
-        latest = df.iloc[-1]
+        # 定義
+        df_recent_week = df.tail(7) # df_recent_week の定義
+        latest = df.iloc[-1]        # 最新・前日データの定義
         previous = df.iloc[-2]
 
-        # 株価終値・出来高
+        # Commnet：株価終値出来高
         diff = latest["Close"] - previous["Close"]
         add_comment(comment_map, "株価（終値）", "中立", f"終値={latest['Close']:.2f}（前日比{diff:+.2f}）")
-
+ 
+        # Commnet：出来高
         vol_latest = latest["Volume"]
         vol_avg = df_recent_week["Volume"].mean()
+        vol_increased = vol_latest > vol_avg
         diff = vol_latest - vol_avg
         pct = round((diff / vol_avg) * 100, 1)
         add_comment(comment_map, "出来高", "中立", f"7日平均={vol_avg:,.0f}（差分={diff:+,.0f} / {pct:+.1f}%）")
 
-        # 移動平均クロスの例（追加）
-        ma_pairs = [
-            ("5DMA", "25DMA", latest["MA5"], latest["MA25"], previous["MA5"], previous["MA25"], "短期"),
-            ("25DMA", "75DMA", latest["MA25"], latest["MA75"], previous["MA25"], previous["MA75"], "中期"),
-            ("75DMA", "200DMA", latest["MA75"], latest["MA200"], previous["MA75"], previous["MA200"], "長期")
-        ]
-        for key, base_key, cur, base, cur_prev, base_prev, label in ma_pairs:
-            gap = (cur - base) / base * 100
-            diff = cur - base
-            relation = f"{key} > {base_key}" if diff > 0 else f"{key} < {base_key}"
-            diff_str = f"{relation}, 差分={diff:+.2f}円"
-            crossed_up = cur > base and cur_prev <= base_prev
-            crossed_down = cur < base and cur_prev >= base_prev
-            if crossed_up:
-                strength = judge_strength(gap, thresholds)
-                strength = {"弱": "中", "中": "強", "強": "最強"}[strength] if vol_increased else strength
+        # Commnet：複数期間対応のサポート・レジスタンス判定
+        close_price = latest["Close"]
+        for window in [20, 60]:
+            support_price = df["Low"].rolling(window).min().iloc[-1]
+            resist_price = df["High"].rolling(window).max().iloc[-1]
+            close_price = latest["Close"]
+            # --- 支持線 判定 ---
+            diff_support = close_price - support_price
+            pct_support = (diff_support / support_price) * 100
+            diff_str = f"（{diff_support:+.2f}円 / {pct_support:+.2f}%）"
+            if close_price < support_price:
+                add_comment(comment_map, f"支持線(直近{window}日)", "売り", f"支持線を下抜け{diff_str}", "[信頼度強]")
+            elif abs(pct_support) <= 3:
+                strength = "強" if abs(pct_support) <= 2 else "弱"
                 note = format_note(strength, vol_increased)
-                add_comment(comment_map, key, "買い", f"{label}GC（{diff_str}）", note)
-                score += {"弱": 1, "中": 2, "強": 3, "最強": 4}[strength]
-            elif crossed_down:
-                gap = abs(gap)
-                strength = judge_strength(gap, thresholds)
-                strength = {"弱": "中", "中": "強", "強": "最強"}[strength] if vol_increased else strength
+                add_comment(comment_map, f"支持線(直近{window}日)", "買い", f"支持線から反発の兆し{diff_str}", note)
+            else:
+                add_comment(comment_map, f"支持線(直近{window}日)", "中立", f"支持線から乖離{diff_str}")
+            # --- 抵抗線 判定 ---
+            diff_resist = close_price - resist_price
+            pct_resist = (diff_resist / resist_price) * 100
+            diff_str = f"（{diff_resist:+.2f}円 / {pct_resist:+.2f}%）"
+            if close_price > resist_price:
+                add_comment(comment_map, f"抵抗線(直近{window}日)", "買い", f"抵抗線を突破{diff_str}", "[信頼度強]")
+            elif abs(pct_resist) <= 3:
+                strength = "強" if abs(pct_resist) <= 2 else "弱"
                 note = format_note(strength, vol_increased)
-                add_comment(comment_map, key, "売り", f"{label}DC（{diff_str}）", note)
-                score -= {"弱": 1, "中": 2, "強": 3, "最強": 4}[strength]
+                add_comment(comment_map, f"抵抗線(直近{window}日)", "売り", f"抵抗線に接近中{diff_str}", note)
             else:
-                add_comment(comment_map, key, "中立", f"明確なクロスなし（{diff_str}）")
-
-        # 超GC / 超DC 判定
-        ma5, ma25, ma75 = latest["MA5"], latest["MA25"], latest["MA75"]
-        diff_super = ma5 - ma75
-        diff_str_super = f"差分={diff_super:+.2f}円"
-        if ma5 > ma25 > ma75:
-            add_comment(comment_map, "超GC", "買い", f"超GC（5DMA > 25DMA > 75DMA, {diff_str_super}）", "[信頼度最強]")
-            score += 4
-        elif ma5 < ma25 < ma75:
-            add_comment(comment_map, "超DC", "売り", f"超DC（5DMA < 25DMA < 75DMA, {diff_str_super}）", "[信頼度最強]")
-            score -= 4
+                add_comment(comment_map, f"抵抗線(直近{window}日)", "中立", f"抵抗線との乖離{diff_str}")
+ 
+        # Commnet：移動平均線
+        # クロスが発生していたら add_comment() のみでスコア反映も完結
+        if crossed_up:
+            if slope_ok and vol_increased:
+                strength = {"弱": "中", "中": "強", "強": "最強"}[strength]
+            elif vol_increased:
+                strength = {"弱": "中", "中": "強", "強": "強"}[strength]
+            note = format_note(strength, vol_increased)
+            add_comment(comment_map, key, "買い", f"{label}GC（{diff_str}）", note)
+        elif crossed_down:
+            if slope_cur < 0 and slope_base < 0 and vol_increased:
+                strength = {"弱": "中", "中": "強", "強": "最強"}[strength]
+            elif vol_increased:
+                strength = {"弱": "中", "中": "強", "強": "強"}[strength]
+            note = format_note(strength, vol_increased)
+            add_comment(comment_map, key, "売り", f"{label}DC（{diff_str}）", note)
         else:
-            if ma5 > ma25 and ma25 < ma75:
-                trend_desc = "5DMA > 25DMA < 75DMA"
-            elif ma5 < ma25 and ma25 > ma75:
-                trend_desc = "5DMA < 25DMA > 75DMA"
-            elif ma5 > ma75 and ma25 < ma75:
-                trend_desc = "5DMA > 75DMA > 25DMA"
+            add_comment(comment_map, key, "中立", f"明確なクロスなし（{diff_str}）")
+ 
+        # Commnet：25日線乖離
+            dev = latest["MA25_Deviation"]
+            if dev > 5:
+                add_comment(
+                    comment_map,
+                    "25日乖離率（%）",
+                    "売り",
+                    "平均より大きく上振れ（過熱感あり）",
+                    "[信頼度強]"
+                )
+            elif dev < -5:
+                add_comment(
+                    comment_map,
+                    "25日乖離率（%）",
+                    "買い",
+                    "平均より大きく下振れ（割安感あり）",
+                    "[信頼度強]"
+                )
             else:
-                trend_desc = "順序バラバラ"
-            add_comment(comment_map, "超GC/DC", "中立", f"明確なシグナルなし（{trend_desc}, {diff_str_super}）")
+                add_comment(
+                    comment_map,
+                    "25日乖離率（%）",
+                    "中立",
+                    "平均付近で安定"
+                )
 
-        # 25日乖離率
-        dev = latest["MA25_Deviation"]
-        if dev > 5:
-            add_comment(comment_map, "25日乖離率（%）", "売り", "平均より大きく上振れ（過熱感あり）")
-        elif dev < -5:
-            add_comment(comment_map, "25日乖離率（%）", "買い", "平均より大きく下振れ（割安感あり）")
-        else:
-            add_comment(comment_map, "25日乖離率（%）", "中立", "平均付近で安定")
-
-        # ボリンジャーバンド
-        diff_from_mid = latest["Close"] - latest["BB_MAVG"]
-        band_width = latest["BB_High"] - latest["BB_Low"]
-        deviation = (latest["Close"] - latest["BB_Low"]) / band_width * 100
-        if latest["Close"] > latest["BB_High"]:
-            add_comment(comment_map, "BB上限", "売り", f"{latest['Close']:.2f}円（終値） > BB上限={latest['BB_High']:.2f}円｜バンドを上抜け（買われすぎ）🚨")
-        elif latest["Close"] < latest["BB_Low"]:
-            add_comment(comment_map, "BB下限", "買い", f"{latest['Close']:.2f}円（終値） < BB下限={latest['BB_Low']:.2f}円｜バンドを下抜け（売られすぎ）📉")
-        else:
-            zone = "上寄り（やや割高）" if deviation > 66 else "下寄り（やや割安）" if deviation < 33 else "中央付近（安定圏）"
-            add_comment(comment_map, "BB中央", "中立", f"{latest['Close']:.2f}円（終値）はバンド内の{zone}｜中心乖離={diff_from_mid:+.2f}円")
-
-        # RSI
+        # Commnet：RSI
         val, prev_val = latest["RSI"], previous["RSI"]
         diff = val - prev_val
         trend = "上昇中" if diff > 0 else "低下中"
         if val > 80:
             strength = "強" if val >= 82 else "中" if val >= 81 else "弱"
-            add_comment(comment_map, "RSI", "売り", f"買われすぎ（{trend} / 過熱度：{strength}）")
+            note = format_note(strength, vol_increased)
+            add_comment(comment_map, "RSI", "売り", f"買われすぎ（{trend} / 過熱度：{strength}）", note)
         elif val < 20:
             strength = "強" if val <= 18 else "中" if val <= 19 else "弱"
-            add_comment(comment_map, "RSI", "買い", f"売られすぎ（{trend} / 割安度：{strength}）")
+            note = format_note(strength, vol_increased)
+            add_comment(comment_map, "RSI", "買い", f"売られすぎ（{trend} / 割安度：{strength}）", note)
         else:
             add_comment(comment_map, "RSI", "中立", f"明確なシグナルなし（{trend} / 前日比{diff:+.2f}）")
 
+        # Commnet：ストキャス
         # ストキャス（%K）
         k, d = latest["STOCH_K"], latest["STOCH_D"]
         if k < 20 and k > d:
-            add_comment(comment_map, "ストキャス（%K）", "買い", "売られすぎ圏から反転の兆し")
+            note = "[信頼度強]"
+            add_comment(comment_map, "ストキャス（%K）", "買い", "売られすぎ圏から反転の兆し", note)
         elif k > 80 and k < d:
-            add_comment(comment_map, "ストキャス（%K）", "売り", "買われすぎ圏から反落の兆し")
+            note = "[信頼度強]"
+            add_comment(comment_map, "ストキャス（%K）", "売り", "買われすぎ圏から反落の兆し", note)
         else:
             zone = "売られすぎ圏" if k < 20 else "買われすぎ圏" if k > 80 else "中立圏"
             crossover = "ゴールデンクロス（上抜け）" if k > d else "デッドクロス（下抜け）" if k < d else "一致"
-            add_comment(comment_map, "ストキャス（%K）", "中立", f"%K={k:.2f}｜{zone}で{k:.2f}（{crossover}）")
-
+            add_comment(
+                comment_map,
+                "ストキャス（%K）",
+                "中立",
+                f"%K={k:.2f}｜{zone}（{crossover}）"
+            )
         # ストキャス（%D）
         d_val, prev_d_val = latest["STOCH_D"], previous["STOCH_D"]
+        diff = d_val - prev_d_val
+        trend = "上昇中" if diff > 0 else "低下中"
         if d_val > 80:
-            add_comment(comment_map, "ストキャス（%D）", "売り", "買われすぎ圏に滞在")
+            note = "[信頼度強]"
+            add_comment(comment_map, "ストキャス（%D）", "売り", f"買われすぎ圏に滞在（{trend}）", note)
         elif d_val < 20:
-            add_comment(comment_map, "ストキャス（%D）", "買い", "売られすぎ圏に滞在")
+            note = "[信頼度強]"
+            add_comment(comment_map, "ストキャス（%D）", "買い", f"売られすぎ圏に滞在（{trend}）", note)
         else:
-            add_comment(comment_map, "ストキャス（%D）", "中立", "明確なサインなし")
-
-        # ストキャス総合
+            zone = "買われすぎ圏" if d_val > 80 else "売られすぎ圏" if d_val < 20 else "中立圏"
+            add_comment(comment_map, "ストキャス（%D）", "中立", f"%D={d_val:.2f}｜{zone}（{trend}）")
+        # ストキャス総合（%Kと%Dの関係）
         k, d = latest["STOCH_K"], latest["STOCH_D"]
         if k < 20 and k > d:
-            add_comment(comment_map, "ストキャス総合", "買い", "売られすぎ圏でGC発生")
-            score += 1
+            note = "[信頼度強]"
+            add_comment(comment_map, "ストキャス総合", "買い", "売られすぎ圏でGC発生", note)
         elif k > 80 and k < d:
-            add_comment(comment_map, "ストキャス総合", "売り", "買われすぎ圏でDC発生")
-            score -= 1
+            note = "[信頼度強]"
+            add_comment(comment_map, "ストキャス総合", "売り", "買われすぎ圏でDC発生", note)
         elif k > d and k < 50:
             add_comment(comment_map, "ストキャス総合", "中立", "中立〜買い寄り｜下位圏で上昇中")
         elif k < d and k > 50:
@@ -734,33 +825,119 @@ for symbol in symbols:
         else:
             add_comment(comment_map, "ストキャス総合", "中立", "明確なシグナルなし")
 
-        # MACD
+        # Commnet：MACD
         val, prev_val = latest["MACD_Diff"], previous["MACD_Diff"]
         diff = val - prev_val
         if val > 0:
             if diff > 0:
-                add_comment(comment_map, "MACD", "買い", "MACD上昇中（勢い強）")
+                note = "[信頼度強]"
+                add_comment(comment_map, "MACD", "買い", "MACD上昇中（勢い強）", note)
             else:
-                add_comment(comment_map, "MACD", "買い", "MACDプラス圏だが減速中（慎重に）")
+                note = "[信頼度弱]"
+                add_comment(comment_map, "MACD", "買い", "MACDプラス圏だが減速中（慎重に）", note)
         else:
             if diff < 0:
-                add_comment(comment_map, "MACD", "売り", "MACD下降中（勢い強）")
+                note = "[信頼度強]"
+                add_comment(comment_map, "MACD", "売り", "MACD下降中（勢い強）", note)
             else:
-                add_comment(comment_map, "MACD", "売り", "MACDマイナス圏だが減速中（様子見）")
+                note = "[信頼度弱]"
+                add_comment(comment_map, "MACD", "売り", "MACDマイナス圏だが減速中（様子見）", note)
 
-        # ADX
-        val = latest["ADX"]
-        if val < 20:
-            add_comment(comment_map, "ADX", "中立", "方向感なし（様子見）")
-        elif val < 25:
-            add_comment(comment_map, "ADX", "中立", "転換｜トレンド発生の兆し（注目）")
-        elif val < 40:
-            add_comment(comment_map, "ADX", "中立", "追随｜トレンド発生中（流れに乗る場面）")
+        # Commnet：ADX
+        plus_di = latest["+DI"]
+        minus_di = latest["-DI"]
+        adx_val = latest["ADX"]
+        trend_note = ""
+        signal = "中立"
+        note = ""
+        category = "technical"
+        # トレンド方向の判定条件
+        if adx_val >= 20:
+            if plus_di > minus_di:
+                signal = "買い"
+                trend_note = "買いトレンド（+DI > -DI）"
+                note = "[信頼度強]" if adx_val > 25 else "[信頼度中]"
+            elif minus_di > plus_di:
+                signal = "売り"
+                trend_note = "売りトレンド（-DI > +DI）"
+                note = "[信頼度強]" if adx_val > 25 else "[信頼度中]"
+            else:
+                trend_note = "方向感なし（DI交差）"
         else:
-            add_comment(comment_map, "ADX", "中立", "過熱｜トレンド過熱（反転に注意）")
+            trend_note = "トレンド弱く方向性なし"
+            signal = "中立"
 
-        # 総合評価
-        comment_map["✅ 総合評価"] = f"スコア: {score:.1f}"
+        add_comment(
+            comment_map,
+            "ADX（+DI/-DI）",
+            signal,
+            f"ADX={adx_val:.1f}｜+DI={plus_di:.1f}, -DI={minus_di:.1f}｜{trend_note}",
+            note,
+            category=category
+        )
+        try:
+            di_pos = latest["+DI"]
+            di_neg = latest["-DI"]
+            if not np.isnan(di_pos) and not np.isnan(di_neg):
+                if di_pos > di_neg:
+                    add_comment(comment_map, "ADX（+DI/-DI）", "買い", f"+DI優勢（+DI={di_pos:.2f} > -DI={di_neg:.2f}）", "[信頼度強]")
+                elif di_neg > di_pos:
+                    add_comment(comment_map, "ADX（+DI/-DI）", "売り", f"-DI優勢（-DI={di_neg:.2f} > +DI={di_pos:.2f}）", "[信頼度強]")
+                else:
+                    add_comment(comment_map, "ADX（+DI/-DI）", "中立", f"+DIと-DIが拮抗（{di_pos:.2f} ≒ {di_neg:.2f}）")
+        except KeyError as e:
+            print(f"❌ エラー: {symbol} - '{e.args[0]}' が見つかりません")
+
+        # Comment：BB
+        diff_from_mid = latest["Close"] - latest["BB_MAVG"]
+        band_width = latest["BB_High"] - latest["BB_Low"]
+        deviation = (latest["Close"] - latest["BB_Low"]) / band_width * 100
+        if latest["Close"] > latest["BB_High"]:
+            note = "[信頼度強]"
+            add_comment(
+                comment_map,
+                "BB上限",
+                "売り",
+                f"{latest['Close']:.2f}円（終値） > BB上限={latest['BB_High']:.2f}円｜バンドを上抜け（買われすぎ）🚨",
+                note
+            )
+        elif latest["Close"] < latest["BB_Low"]:
+            note = "[信頼度強]"
+            add_comment(
+                comment_map,
+                "BB下限",
+                "買い",
+                f"{latest['Close']:.2f}円（終値） < BB下限={latest['BB_Low']:.2f}円｜バンドを下抜け（売られすぎ）📉",
+                note
+            )
+        else:
+            zone = (
+                "上寄り（やや割高）" if deviation > 66 else
+                "下寄り（やや割安）" if deviation < 33 else
+                "中央付近（安定圏）"
+            )
+            add_comment(
+                comment_map,
+                "BB中央",
+                "中立",
+                f"{latest['Close']:.2f}円（終値）はバンド内の{zone}｜中心乖離={diff_from_mid:+.2f}円"
+            )
+
+        # ✅ 各判定処理（add_commentの中で自動的に加点される）
+        total_score = sum(score_dict.values())
+        normalized_score = normalize_technical_score(score_dict["technical"])
+
+        comment_map["✅ 総合評価"] = f"スコア: {total_score:.1f}"
+        comment_map["✅ テクニカル指標スコア"] = f"{normalized_score:.1f} / 10"
+
+        summary = generate_detailed_summary_block(
+            score=total_score,
+            technical_score=normalize_technical_score(score_dict["technical"]),
+            chart_score=normalize_technical_score(score_dict["chart"]),
+            fundamental_score=normalize_technical_score(score_dict["fundamental"]),
+            highlights=[v for k, v in comment_map.items() if not k.startswith("✅")]
+        )
+        print(summary)
 
 ######### 3.コメント（指標判断）-END
 
@@ -773,6 +950,12 @@ for symbol in symbols:
         table_data = []
         table_data.append(["株価（終値）"] + [f"{v:.2f}" for v in df_recent_week["Close"]])
         table_data.append(["出来高"] + [abbreviate_number(v) for v in df_recent_week["Volume"]])
+        # ✅ 20日間のサポート／レジスタンス（当日までの値を使う）
+        support_20d = df["Low"].rolling(20).min().iloc[-7:]
+        resist_20d = df["High"].rolling(20).max().iloc[-7:]
+        # ✅ テーブルに追加（株価の直下）
+        table_data.append(["支持線(直近20日)"] + [f"{v:.2f}" for v in support_20d])
+        table_data.append(["抵抗線(直近20日)"] + [f"{v:.2f}" for v in resist_20d])
         table_data.append(divider("移動平均系"))
         if SHOW_PRICE_MA:
             table_data.append(["5DMA"] + [f"{v:.2f}" for v in df_recent_week["MA5"]])
@@ -920,7 +1103,6 @@ for symbol in symbols:
         )
 
 ######### 4.テーブル-END
-
 
     except Exception as e:
         print(f"❌ エラー: {symbol} - {e}")
