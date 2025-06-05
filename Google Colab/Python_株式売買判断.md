@@ -27,14 +27,54 @@
     ver1.21
     ・コードの順序を整理した。
     ・チャートの表示を微調整＋タイトル／サブタイトルを表示するようにした。
-    ver.1.22
+    ver1.22
     ・総合評価の部分を末尾から「チャート」、「表」の真ん中に移動させた。
     ・スコアのコードを自動で算出するようにした（※要調整）
+    ver1.23
+    ・初期実行の部分のコードを整理した。
+    ・RSIのチャート上の表記方法を修正した（※要調整）
+    ・テーブルのコメント欄の内容に応じて、セルの文字色を変えるようにした。
+    ・コメント欄のアイコン表示を消す＋[買い/売り/中立]➡[買弱/買強/売弱/売強/中立]に変更
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
-    「今回のシグナルの信頼度（スコア）」を出力するのが目的です。
-    ・
 ##### Memo_END
+
+# ==============================
+# 🔧 初期セットアップと依存関係
+# ==============================
+
+# 🚀 FAST_MODE = True にするとインストールをスキップできます（時短）
+FAST_MODE = False  # 初回や再起動後は必ず False にしてください
+
+if not FAST_MODE:
+    print("📦 ライブラリとフォントをインストール中...")
+    !apt-get -y install fonts-noto-cjk > /dev/null
+    !apt-get install -y wkhtmltopdf > /dev/null
+    !pip install -q imgkit mplfinance ta
+    print("✅ インストール完了")
+else:
+    print("🚀 FAST_MODE：インストールをスキップしました")
+
+# ==============================
+# ✅ フォント設定（matplotlib + PIL）
+# ==============================
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+from PIL import ImageFont
+
+font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+jp_font = font_manager.FontProperties(fname=font_path)
+plt.rcParams['font.family'] = jp_font.get_name()
+pil_font = ImageFont.truetype(font_path, 24)
+print(f"✅ 日本語フォント設定完了：{jp_font.get_name()}")
+
+# ==============================
+# ✅ JSTタイムゾーン + 本日の日付
+# ==============================
+from datetime import datetime, timedelta, timezone
+JST = timezone(timedelta(hours=9))
+today_str = datetime.now(JST).strftime("%Y-%m-%d")
+print(f"📅 今日の日付（JST）：{today_str}")
 
 ######### 0.Condig（設定）
 
@@ -59,25 +99,22 @@ from ta.volatility import BollingerBands
 from ta import momentum
 from tabulate import tabulate
 
-## 日本語フォント設定
-font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-jp_font = font_manager.FontProperties(fname=font_path)
-plt.rcParams['font.family'] = jp_font.get_name()  # NotoSansCJK に切り替え
-pil_font = ImageFont.truetype(font_path, 24)
-
-## タイムゾーンと日付
-JST = timezone(timedelta(hours=9))
-today_str = datetime.now(JST).strftime("%Y-%m-%d")
-
-## Google Driveマウント
+## 📂 Google Drive マウント
 from google.colab import drive
 drive.mount('/content/drive')
+print("✅ Google Drive がマウントされました")
 
-## 銘柄リスト取得
+# Google Sheets（CSV）から銘柄リスト取得
+import pandas as pd
+# 🔗 公開された Google Sheets の CSV 出力リンク（必要に応じて変更可）
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZrqf2NhMcD6ebNirrxSV_ibn1FTn2Rj-jrRI27nQcSEAgkqEQfvEZYitYoB1GT65S7qIrgGhMds1i/pub?gid=0&single=true&output=csv"
-df_symbols = pd.read_csv(sheet_url)
-symbols = df_symbols["Symbol"].dropna().tolist()
-print("🔌 対象銘柄：", symbols)
+try:
+    df_symbols = pd.read_csv(sheet_url)
+    symbols = df_symbols["Symbol"].dropna().tolist()
+    print(f"✅ シンボル取得成功：{len(symbols)}件")
+except Exception as e:
+    print(f"❌ シートの読み込みに失敗しました: {e}")
+    symbols = []
 
 ## 表示フラグ
 SHOW_VOLUME_MA = 1
@@ -125,7 +162,6 @@ def generate_summary_comment(comment_map, score):
 
     html = "<div>...</div>"
     return html
-
 
 def generate_summary_comment(comment_map, score):
     buy_comments = []
@@ -370,7 +406,7 @@ for symbol in symbols:
         panel_ratios = generate_panel_ratios(used_panels, default_main=3, default_others=1)
         print(f"[DEBUG] panel_ratios = {panel_ratios} | used_panels = {used_panels}")
 
-        # チャート描画
+        ## チャート描画
         fig, axlist = mpf.plot(
             df_recent,
             type="candle",
@@ -382,6 +418,57 @@ for symbol in symbols:
             figsize=(14, 8),
             returnfig=True
         )
+
+        # ✅ annotation_configs & extrema_points（事前定義が必要ならここ）
+        from scipy.signal import argrelextrema
+
+        # 📌 事前設定：注釈のスタイル
+        annotation_configs = {
+            "High": {"offset": 30, "color": "darkred"},
+            "Low": {"offset": -30, "color": "darkgreen"},
+            "Pivot": {"offset": 50, "color": "gray", "fill": "yellow"},
+        }
+
+        # 📌 極値ポイントの検出
+        extrema_points = {
+            "High": argrelextrema(df_recent["High"].values, np.greater, order=5)[0],
+            "Low": argrelextrema(df_recent["Low"].values, np.less, order=5)[0],
+            "Pivot": argrelextrema(df_recent["Close"].values, np.greater, order=5)[0],
+        }
+
+        # ✅ チャート描画（mplfinanceなどで axlist[0] を得たあと）
+        # 🔽 Y軸に余白を追加（方法1）
+        ymin, ymax = axlist[0].get_ylim()
+        margin = (ymax - ymin) * 0.1  # 上下に10%の余白
+        axlist[0].set_ylim(ymin - margin, ymax + margin)
+
+        # ✅ 注釈描画（方法2：注釈が枠外に出ないよう制限付き）
+        ymax_limit = axlist[0].get_ylim()[1] * 0.95  # Y軸上限の95%までに制限
+
+        for label_type, indices in extrema_points.items():
+            cfg = annotation_configs[label_type]
+            for i, idx in enumerate(indices):
+                price = (
+                    df_recent["High"].iloc[idx] if label_type == "High"
+                    else df_recent["Low"].iloc[idx] if label_type == "Low"
+                    else df_recent["Close"].iloc[idx]
+                )
+                dynamic_offset = cfg["offset"] + (10 if i % 2 == 0 else -10)
+                y_annot = min(price + dynamic_offset, ymax_limit)  # 枠外に出ないよう調整
+
+                if not np.isnan(price):
+                    date_label = df_recent.index[idx].strftime('%-m/%-d')
+                    axlist[0].annotate(
+                        f"{date_label} {price:.0f}",
+                        xy=(idx, price),
+                        xytext=(idx, y_annot),
+                        textcoords="data",
+                        arrowprops=dict(arrowstyle='->', lw=1, color=cfg["color"]),
+                        fontsize=9,
+                        color=cfg["color"],
+                        bbox=dict(boxstyle="round", fc=cfg.get("fill", "white"), ec=cfg["color"], alpha=0.85)
+                    )
+
         # メインタイトル文字列を定義
         title = f"{name}（{symbol}）株価チャート（直近60日） - {today_str}"
         # 描画後の axlist[0] にタイトルを設定
@@ -407,20 +494,39 @@ for symbol in symbols:
         fig.subplots_adjust(left=0.05, right=0.95)
         fig.savefig("chart_output.png", dpi=150, bbox_inches="tight")
 
-        # サポート・レジスタンスライン
+        # サポート・レジスタンスライン（外側に順番指定で表示）
         price_ax = axlist[0]
         sr_windows = [20, 60]
         support_colors = ["#1f77b4", "#17becf"]
         resistance_colors = ["#d62728", "#ff7f0e"]
-        x_pos = len(df_recent) + 1
+
+        # 値を一時保存
+        support_lines = {}
+        resist_lines = {}
+
         for idx, window in enumerate(sr_windows):
             if len(df_recent) >= window:
                 support = df_recent["Low"].rolling(window).min().iloc[-1]
                 resist = df_recent["High"].rolling(window).max().iloc[-1]
+
+                # 線の描画
                 price_ax.axhline(support, color=support_colors[idx % 2], linestyle='--', linewidth=1.2, alpha=0.8)
                 price_ax.axhline(resist, color=resistance_colors[idx % 2], linestyle='--', linewidth=1.2, alpha=0.8)
-                price_ax.text(x_pos, support, f"\u2190 Support ({window}d)", va='center', fontsize=8, color=support_colors[idx % 2])
-                price_ax.text(x_pos, resist, f"\u2190 Resistance ({window}d)", va='center', fontsize=8, color=resistance_colors[idx % 2])
+
+                # 値を辞書に保存
+                support_lines[window] = support
+                resist_lines[window] = resist
+
+        # ✅ 表示順に注釈を配置
+        label_y_positions = [0.95, 0.90, 0.85, 0.80]  # Y位置（上から下に）
+        price_ax.text(0.01, label_y_positions[0], f"Resistance(60d): {resist_lines[60]:.2f}",
+                      transform=price_ax.transAxes, ha='left', va='center', fontsize=8, color=resistance_colors[1])
+        price_ax.text(0.01, label_y_positions[1], f"Resistance(20d): {resist_lines[20]:.2f}",
+                      transform=price_ax.transAxes, ha='left', va='center', fontsize=8, color=resistance_colors[0])
+        price_ax.text(0.01, label_y_positions[2], f"Support(20d): {support_lines[20]:.2f}",
+                      transform=price_ax.transAxes, ha='left', va='center', fontsize=8, color=support_colors[0])
+        price_ax.text(0.01, label_y_positions[3], f"Support(60d): {support_lines[60]:.2f}",
+                      transform=price_ax.transAxes, ha='left', va='center', fontsize=8, color=support_colors[1])
 
         # 凡例表示（ラベル付きの要素があるときのみ）
         if any(line.get_label() and not line.get_label().startswith("_") for line in price_ax.lines):
@@ -455,7 +561,21 @@ for symbol in symbols:
         # コメントマップに安全かつ統一的に登録する関数
 
         def add_comment(comment_map, key, signal, detail, note=""):
-            icon = {"買い": "🟢", "売り": "🔴", "中立": "🟡"}.get(signal, "")
+
+            # 信頼度の抽出（あれば）
+            strength = ""
+            if "信頼度" in note:
+                import re
+                match = re.search(r"信頼度(最強|強|中|弱)", note)
+                if match:
+                    strength = match.group(1)
+            # 信号の変換（買強／買弱などに変換）
+            if signal == "買い":
+                signal = "買強" if strength in ["強", "最強"] else "買弱"
+            elif signal == "売り":
+                signal = "売強" if strength in ["強", "最強"] else "売弱"
+            # 中立は変えない
+
             full_note = f" {note}" if note else ""
             comment_map[key] = f"{signal}｜{detail}{full_note}".strip()
 
@@ -681,26 +801,51 @@ for symbol in symbols:
         # DataFrameに変換
         df_table = pd.DataFrame(table_data, columns=["指標"] + date_labels)
 
-        # コメントにアイコンを付与
-        def emphasize(val):
-            if "買い" in val:
-                return f"🟢 {val}"
-            elif "売り" in val:
-                return f"🔴 {val}"
-            elif "中立" in val:
-                return f"🟡 {val}"
-            return val
+        # ✅ コメント列を追加（指標名に基づいてコメントをマッピング）
+        comment_list = []
+        for row in table_data:
+            key = row[0]
+            if key.startswith("──"):
+                comment_list.append("")  # セクション見出し行は空
+            else:
+                comment_list.append(comment_map.get(key, ""))
 
-        # コメント列を追加
-        comment_list = [emphasize(comment_map.get(row[0], "")) for row in table_data]
         df_table["コメント"] = comment_list
+
+        # コメント列を追加_修正版（アイコンなしでコメントをそのまま使う）
+        def get_style_by_comment(comment):
+            if not comment:
+                return ""
+
+            comment = str(comment).strip()
+
+            # シグナルを抽出（買強／買弱／売強／売弱／中立）に対応
+            signal_match = re.match(r"^(買[強弱]|売[強弱]|中立)[|｜]", comment)
+            if not signal_match:
+                return ""
+
+            signal = signal_match.group(1)
+
+            # 中立は無色
+            if signal == "中立":
+                return ""
+
+            # 色と太字の設定
+            color = "green" if "買" in signal else "red"
+            weight = "bold" if "強" in signal else "normal"
+
+            return f"color: {color}; font-weight: {weight}"
+
+        # ✅ スタイル適用版HTMLに変換
+        styled_df = df_table.style.apply(apply_row_style, axis=1)
+        html_table_with_summary = styled_df.to_html(render_links=False, escape=False)
 
         # CSS（コメント列を左寄せ）
         style = """
         <style>
         table {
           border-collapse: collapse;
-          width: auto;  /* 👈 これに変更！ */
+          width: auto;
         }
         th, td {
           padding: 4px;
@@ -713,54 +858,43 @@ for symbol in symbols:
         </style>
         """
 
-        # ✅ 初期化
+        # ✅ スコアに基づく総合評価生成
         summary_text = "⚠️ 総合評価：評価情報が取得できません（スコア未算出）"
         score = 0.0
 
-        # ✅ 安全にスコアを抽出
         if "✅ 総合評価" in comment_map:
             try:
                 score = float(comment_map["✅ 総合評価"].split("スコア:")[-1])
+                def generate_summary_comment(score):
+                    if score >= 7:
+                        return f"✅ 総合評価：買い傾向（スコア: {score:.1f}）"
+                    elif score >= 4:
+                        return f"⚠️ 総合評価：やや買い（スコア: {score:.1f}）"
+                    elif score >= 1:
+                        return f"😐 総合評価：中立（スコア: {score:.1f}）"
+                    elif score >= -2:
+                        return f"⚠️ 総合評価：やや売り（スコア: {score:.1f}）"
+                    else:
+                        return f"❌ 総合評価：売り傾向（スコア: {score:.1f}）"
                 summary_text = generate_summary_comment(score)
             except Exception as e:
                 print(f"⚠️ 評価の解析中にエラーが発生: {e}")
         else:
             print(f"⚠️ {symbol} - '✅ 総合評価' が見つかりません")
 
-        # ✅ 総合評価コメントを動的に生成
-        def generate_summary_comment(score):
-            if score >= 7:
-                return f"✅ 総合評価：買い傾向（スコア: {score:.1f}）"
-            elif score >= 4:
-                return f"⚠️ 総合評価：やや買い（スコア: {score:.1f}）"
-            elif score >= 1:
-                return f"😐 総合評価：中立（スコア: {score:.1f}）"
-            elif score >= -2:
-                return f"⚠️ 総合評価：やや売り（スコア: {score:.1f}）"
-            else:
-                return f"❌ 総合評価：売り傾向（スコア: {score:.1f}）"
-
-        # ✅ scoreから生成された summary_text を使う
-        colspan = len(df_table.columns)
-        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">{summary_text}</td></tr>'
-
-        # ✅ HTMLパーツに反映
+        # ✅ 表示用の総合評価パーツ
         summary_html = f"""
         <p style="text-align:center; font-weight:bold; background:#eef; padding: 6px;">
         {summary_text}
         </p>
         """
-        summary_row = f'<tr><td colspan="{colspan}" style="text-align:center; font-weight:bold; background:#eef;">{summary_text}</td></tr>'
 
-        # ✅ テーブル末尾には評価行を追加しない
-        html_table_with_summary = df_table.to_html(index=False, escape=False)
-
-        # ✅ 表全体のHTML構造
+        # ✅ 最終HTML構成
         html_table = f"""
         <html>
         <head>
         <meta charset="utf-8">
-        {style}  <!-- ✅ CSS -->
+        {style}
         </head>
         <body>
         <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
@@ -768,15 +902,16 @@ for symbol in symbols:
         </body>
         </html>
         """
-        # ✅ 表示順を指定
-        display(Image(chart_path))          # ① チャート
-        display(HTML(summary_html))         # ② 総合評価だけ別表示（中間に！）
-        display(HTML(html_table))           # ③ テーブル全体
 
-        # 👉 関数に渡すときはこれ！
+        # ✅ 表示
+        display(Image(chart_path))        # ① チャート画像
+        display(HTML(summary_html))       # ② 総合評価コメント
+        display(HTML(html_table))         # ③ テーブル本体
+
+        # ✅ 保存
         save_combined_chart_and_table(
             chart_path=chart_path,
-            html_table=html_table,  # ← ここを修正
+            html_table=html_table,
             output_dir="/content/drive/MyDrive/ColabNotebooks/銘柄分析",
             symbol=symbol,
             name=name,
@@ -785,6 +920,7 @@ for symbol in symbols:
         )
 
 ######### 4.テーブル-END
+
 
     except Exception as e:
         print(f"❌ エラー: {symbol} - {e}")
