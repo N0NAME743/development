@@ -21,10 +21,15 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from PIL import ImageFont
 
+# フォント読み込み
 font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 jp_font = font_manager.FontProperties(fname=font_path)
-plt.rcParams['font.family'] = jp_font.get_name()
 pil_font = ImageFont.truetype(font_path, 24)
+
+# matplotlib全体に適用
+import matplotlib as mpl
+mpl.rcParams['font.family'] = jp_font.get_name()
+
 print(f"✅ 日本語フォント設定完了：{jp_font.get_name()}")
 
 # ==============================
@@ -272,38 +277,6 @@ for symbol in symbols:
         from scipy.signal import argrelextrema
         import numpy as np
 
-        trend_signals = []
-        try:
-            highs_idx = argrelextrema(df_recent["High"].values, np.greater, order=5)[0]
-            lows_idx = argrelextrema(df_recent["Low"].values, np.less, order=5)[0]
-
-            if len(highs_idx) >= 2 and len(lows_idx) >= 2:
-                swing_highs = df_recent.iloc[highs_idx][["High"]]
-                swing_lows = df_recent.iloc[lows_idx][["Low"]]
-
-                swing_highs["type"] = "high"
-                swing_lows["type"] = "low"
-                swings = pd.concat([swing_highs, swing_lows])
-                swings.sort_index(inplace=True)
-
-                for i in range(2, len(swing_highs)):
-                    prev_high = swing_highs["High"].iloc[i-1]
-                    curr_high = swing_highs["High"].iloc[i]
-                    prev_low = swing_lows["Low"].iloc[i-1]
-                    curr_low = swing_lows["Low"].iloc[i]
-
-                    if curr_high > prev_high and curr_low > prev_low:
-                        trend_signals.append(("上昇トレンド継続", swing_highs.index[i]))
-                    elif curr_high < prev_high and curr_low < prev_low:
-                        trend_signals.append(("下降トレンド継続", swing_lows.index[i]))
-                    else:
-                        trend_signals.append(("レンジor転換", swing_highs.index[i]))
-
-        except Exception as e:
-            print("❌ ダウ理論分析中にエラー:", e)
-            swing_highs = pd.DataFrame()
-            swing_lows = pd.DataFrame()
-
         # 描画準備
         add_plots = []
 
@@ -327,6 +300,46 @@ for symbol in symbols:
             mpf.make_addplot(low_marker, type='scatter', markersize=100, marker='v', color='green', panel=0, label="SwingLow"),
         ]
 
+        # ダウ理論分析ブロック
+        trend_signals = []  # ここで初期化
+        try:
+            highs_idx = argrelextrema(df_recent["High"].values, np.greater, order=5)[0]
+            lows_idx = argrelextrema(df_recent["Low"].values, np.less, order=5)[0]
+
+            if len(highs_idx) >= 2 and len(lows_idx) >= 2:
+                # 高値・安値の取得
+                swing_highs = df_recent.iloc[highs_idx][["High"]].copy()
+                swing_lows = df_recent.iloc[lows_idx][["Low"]].copy()
+                swing_highs["type"] = "high"
+                swing_lows["type"] = "low"
+                swing_highs["Date"] = df_recent.index[highs_idx]
+                swing_lows["Date"] = df_recent.index[lows_idx]
+
+                # インデックスを揃える
+                swing_highs.reset_index(drop=True, inplace=True)
+                swing_lows.reset_index(drop=True, inplace=True)
+
+                # 分析スタート
+                loop_len = min(len(swing_highs), len(swing_lows))
+                for i in range(1, loop_len):
+                    prev_high = swing_highs["High"].iloc[i - 1]
+                    curr_high = swing_highs["High"].iloc[i]
+                    prev_low = swing_lows["Low"].iloc[i - 1]
+                    curr_low = swing_lows["Low"].iloc[i]
+
+                    if curr_high > prev_high and curr_low > prev_low:
+                        trend_signals.append(("上昇トレンド継続", swing_highs["Date"].iloc[i]))
+                    elif curr_high < prev_high and curr_low < prev_low:
+                        trend_signals.append(("下降トレンド継続", swing_lows["Date"].iloc[i]))
+                    else:
+                        trend_signals.append(("レンジor転換", swing_highs["Date"].iloc[i]))
+        except Exception as e:
+            print("❌ ダウ理論分析中にエラー:", type(e).__name__, "-", e)
+            trend_signals = []  # エラー時に空のリストに
+
+            swing_highs = swing_highs.reset_index(drop=True)
+            swing_lows = swing_lows.reset_index(drop=True)
+
         ## Panel 1
         # [出来高]上昇日と下落日に分けて volume データを分割
         vol_up = df_recent["Volume"].copy()
@@ -342,10 +355,10 @@ for symbol in symbols:
             mpf.make_addplot(vol_down, panel=1, type='bar', color='red', alpha=0.6, label="Volume Down")
         )
 
-        ## Panel 2        
+        ## Panel 2
         # ✅ RSI
         add_plots.append(
-            mpf.make_addplot(df_recent["RSI"], panel=2, color="green", label="RSI")
+            mpf.make_addplot(df_recent["RSI"], panel=2, color="black", label="RSI")
         )
         ## Panel 3
         # ✅ MACD一式
@@ -355,16 +368,42 @@ for symbol in symbols:
             mpf.make_addplot(df_recent["MACD_Diff"], panel=3, type='bar', color='purple', alpha=0.5, label="Diff")
         ]
 
-        # Panel代入確認用
-        print("📋 add_plots に含まれる panel 構成:")
-        for i, ap in enumerate(add_plots):
-            panel = ap.get('panel', 0)
-            # labelがなくてもylabelで代替表示
-            label = ap.get('ylabel') or ap.get('label') or f'plot_{i}'
-            print(f"🔹 Plot {i}: panel={panel}, label='{label}'")
-
         ## チャート描画
-        # ✅ mpf.plot() の呼び出し（volume=True は使用しない）
+
+        # 日本語フォントを明示的に再設定（念のため）
+        import matplotlib as mpl
+        mpl.rcParams['font.family'] = jp_font.get_name()
+        plt.rcParams['font.family'] = jp_font.get_name()
+
+        # ✅ 改良版の陽線包み足検出関数
+        def is_bullish_engulfing_confirmed(df, i):
+            if i < 1 or i >= len(df):
+                return False
+
+            prev_open = df["Open"].iloc[i - 1]
+            prev_close = df["Close"].iloc[i - 1]
+            curr_open = df["Open"].iloc[i]
+            curr_close = df["Close"].iloc[i]
+
+            engulf = (
+                prev_close < prev_open and
+                curr_close > curr_open and
+                curr_open < prev_close and
+                curr_close > prev_open
+            )
+
+            rsi = df["RSI"].iloc[i]
+            volume_up = df["Volume"].iloc[i]
+            volume_prev = df["Volume"].iloc[i - 1]
+
+            filter_ok = (
+                rsi < 35 and
+                volume_up > volume_prev * 1.2
+            )
+
+            return engulf and filter_ok
+
+        # mpf.plot() の呼び出し（volume=True は使用しない）
         fig, axlist = mpf.plot(
             df_recent,
             type='candle',
@@ -376,37 +415,193 @@ for symbol in symbols:
             returnfig=True
         )
 
+        # メインチャートの Axes
+        price_ax = axlist[0]
+
+        for i in range(1, len(df_recent)):
+            if is_bullish_engulfing_confirmed(df_recent, i):
+                x0 = df_recent.index[i - 1]
+                x1 = df_recent.index[i]
+                x0f = price_ax.convert_xunits(x0)
+                x1f = price_ax.convert_xunits(x1)
+                x_mid = (x0f + x1f) / 2
+
+                low = min(df_recent["Low"].iloc[i - 1], df_recent["Low"].iloc[i])
+                high = max(df_recent["High"].iloc[i - 1], df_recent["High"].iloc[i])
+                width = x1f - x0f + 0.6
+
+                rect = plt.Rectangle(
+                    (x0f - 0.3, low - 30),
+                    width,
+                    high - low + 60,
+                    linewidth=1.5,
+                    edgecolor='blue',
+                    facecolor='none',
+                    zorder=5,
+                    transform=price_ax.transData
+                )
+                price_ax.add_patch(rect)
+
+                price_ax.annotate(
+                    "陽線包み足",
+                    xy=(x_mid, high + 40),
+                    ha='center',
+                    va='bottom',
+                    fontsize=8,
+                    color='blue',
+                    fontproperties=jp_font,
+                    transform=price_ax.transData
+                )
+
+
+        # ヘッダー部
+        # タイトル文字列を先に定義（忘れずに！）
+        title = f"{name}（{symbol}）株価チャート（直近60日） - {today_str}"
+        recent_close = df["Close"].tail(25)
+        start = recent_close.iloc[0]
+        end = recent_close.iloc[-1]
+        rate = (end - start) / start
+        # トレンド判定（記号 + ラベル）
+        if rate >= 0.05:
+            trend_text = "▲▲ 急上昇（+5%以上）"
+            trend_color = "green"
+        elif rate >= 0.02:
+            trend_text = "▲ 上昇（+2%以上）"
+            trend_color = "green"
+        elif rate <= -0.05:
+            trend_text = "▼▼ 急落（-5%以上）"
+            trend_color = "red"
+        elif rate <= -0.02:
+            trend_text = "▼ 下降（-2%以上）"
+            trend_color = "red"
+        else:
+            trend_text = "→ 横ばい（±2%未満）"
+            trend_color = "dimgray"
+        # 変化率も追加
+        trend_text += f"｜変化率：{rate * 100:.2f}%"
+        # タイトル：会社名＋ティッカー（強調）
+        fig.text(
+            0.5, 0.985,
+            f"{name}（{symbol}）",
+            ha='center',
+            va='top',
+            fontsize=18,
+            fontproperties=jp_font,
+            weight='bold',
+            color='black'
+        )
+        # 下段：60日チャート情報＋日付
+        fig.text(
+            0.5, 0.955,
+            f"株価チャート（直近60日） - {today_str}",
+            ha='center',
+            va='top',
+            fontsize=12,
+            fontproperties=jp_font,
+            color='dimgray'
+        )
+        # 必要に応じて余白も調整
+        fig.subplots_adjust(top=0.92)
+        # ✅ サブタイトル文字列
+        subtitle = f"対象期間：{df.index[-25].strftime('%Y/%m/%d')} ～ {df.index[-1].strftime('%Y/%m/%d')}｜傾向：{trend_text}"
+        axlist[0].text(
+            0.5, 1.05,
+            subtitle,
+            transform=axlist[0].transAxes,
+            ha='center',
+            va='bottom',
+            fontsize=14,
+            fontproperties=jp_font,
+            color='dimgray'
+        )
+        # ✅ 余白調整
+        fig.subplots_adjust(top=0.90)
+
         ## Panel 0 = Price / MA
-        # 注釈（極値マーカー）
+
+        # 指示線・抵抗線（短期＝20日、中期＝60日）
+        support_20 = df["Low"].tail(20).min()
+        support_60 = df["Low"].tail(60).min()
+        resist_20 = df["High"].tail(20).max()
+        resist_60 = df["High"].tail(60).max()
+        price_ax = axlist[0]
+        # 線を描画（色分けも反映）
+        resist60_line = price_ax.axhline(resist_60, color='darkred', linestyle='--', linewidth=1)
+        resist20_line = price_ax.axhline(resist_20, color='lightcoral', linestyle='--', linewidth=1)
+        support20_line = price_ax.axhline(support_20, color='lightgreen', linestyle='--', linewidth=1)
+        support60_line = price_ax.axhline(support_60, color='darkgreen', linestyle='--', linewidth=1)
+        # 凡例ラベル（価格を含めて表示）
+        legend_left = price_ax.legend(
+            handles=[
+                resist60_line, resist20_line,
+                support20_line, support60_line
+            ],
+            labels=[
+                f"抵抗線.60D：{resist_60:.1f}",
+                f"抵抗線.20D：{resist_20:.1f}",
+                f"指示線.20D：{support_20:.1f}",
+                f"指示線.60D：{support_60:.1f}",
+            ],
+            loc="upper left",
+            fontsize=8,
+            frameon=True,
+            fancybox=True,
+            framealpha=0.8,
+            borderpad=0.5,
+            prop=jp_font
+        )
+        price_ax.add_artist(legend_left)
+
+        # 前後5日間における極値を検出
         price_ax = axlist[0]
         price = df_recent["Close"].values
         high_idx = argrelextrema(price, np.greater, order=5)[0]
         low_idx = argrelextrema(price, np.less, order=5)[0]
-
-        # 直近5日間で見た相対的に高い値＝（スイングハイ）
+        # スイングハイ
         for idx in high_idx:
             val = df_recent["High"].iloc[idx]
             date = df_recent.index[idx].strftime('%-m/%-d')
             price_ax.annotate(
                 f"{date}\n{val:.0f}",
-                xy=(df_recent.index[idx], val),
-                xytext=(df_recent.index[idx], val + 50),
-                arrowprops=dict(arrowstyle='->'),
+                xy=(idx, val),
+                xytext=(idx, val + 80),  # ← 上方向に少しゆとり
+                ha='center',
+                va='bottom',
                 fontsize=8,
-                color='darkred'
+                fontweight='bold',
+                color='white',  # ← 文字色
+                bbox=dict(
+                    boxstyle='round,pad=0.3',
+                    facecolor='red',       # ← 背景色（赤）
+                    edgecolor='darkred',   # ← 枠線
+                    linewidth=1,
+                    alpha=0.9
+                ),
+                arrowprops=dict(arrowstyle='->', color='darkred', lw=1)
             )
-        # 直近5日間で見た相対的に安い値＝（スイングロー）
+        # スイングロー
         for idx in low_idx:
             val = df_recent["Low"].iloc[idx]
             date = df_recent.index[idx].strftime('%-m/%-d')
             price_ax.annotate(
                 f"{date}\n{val:.0f}",
-                xy=(df_recent.index[idx], val),
-                xytext=(df_recent.index[idx], val - 50),
-                arrowprops=dict(arrowstyle='->'),
+                xy=(idx, val),
+                xytext=(idx, val - 80),
+                ha='center',
+                va='top',
                 fontsize=8,
-                color='darkgreen'
+                fontweight='bold',
+                color='white',
+                bbox=dict(
+                    boxstyle='round,pad=0.3',
+                    facecolor='green',
+                    edgecolor='darkgreen',
+                    linewidth=1,
+                    alpha=0.9
+                ),
+                arrowprops=dict(arrowstyle='->', color='darkgreen', lw=1)
             )
+
         # ダウ理論：トレンド注釈
         for label, dt in trend_signals:
             price = df_recent.loc[dt, "Close"]
@@ -422,36 +617,122 @@ for symbol in symbols:
             )
 
         ## Panel 1 = Volume
-        # 出来高-株探風
+
+        # 出来高表示の数値設定
         import matplotlib.ticker as mticker
-        # ✅ 万株表示
-        def format_volume_ticks(x, _):
-            return f"{int(x / 10_000)}" if x >= 10_000 else "0"
-        volume_ax = axlist[1]
-        volume_ax.yaxis.set_major_formatter(mticker.FuncFormatter(format_volume_ticks))
-        volume_ax.set_ylabel("（万株）", fontsize=10)
-        volume_ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4, integer=True))
-        # 最大値に応じたY軸上限調整（任意）
-        max_vol = df_recent["Volume"].max()
-        ymax = int((max_vol // 1_000_000 + 2) * 1_000_000)
-        # 🔒 VolumeパネルのAxesを label から安全に取得
-        volume_index = next(i for i, ap in enumerate(add_plots) if ap.get("label") in ["Volume Up", "Volume Down"])
-        volume_ax = axlist[volume_index]
+        for ax in [axlist[2], axlist[3]]:
+            # Y軸スケール調整（0非表示）
+            ax.set_ylim(df_recent["Volume"].max() * 0.02, df_recent["Volume"].max() * 1.1)
+            def custom_formatter(x, pos):
+                return "" if x == 0 else f"{x / 10_000:.1f}万"
+            ax.yaxis.set_major_formatter(mticker.FuncFormatter(custom_formatter))
+            # ✅ 左目盛り非表示、右側だけ表示
+            ax.tick_params(left=False)
+            ax.yaxis.set_label_position("right")
+            ax.yaxis.tick_right()
+            # Yラベルも右側に明示
+            ax.set_ylabel("出来高（万株）", fontsize=9, fontproperties=jp_font)
+        # 軸ラベルも追加（任意）
+        volume_ax.set_ylabel("出来高（万株）", fontsize=9)
 
         ## Panel 2 = RSI
-        # RSIのAxesを label から安全に1つだけ取得
-        rsi_index = next(i for i, ap in enumerate(add_plots) if ap.get("label") == "RSI")
-        rsi_ax = axlist[rsi_index]
-        rsi_ax.set_ylim(0, 100)
-        rsi_ax.axhline(80, color='red', linestyle='--', lw=0.8)
-        rsi_ax.axhline(20, color='grenn', linestyle='--', lw=0.8)
+        
+        # RSIの数値設定
+        rsi_ax = axlist[4]
+        rsi_ax.set_ylim(0, 100) # スケール調整
+        # しきい値ラインやラベル追加
+        rsi_ax.axhline(80, color='red', linestyle='--', lw=0.8, label="_nolegend_")
+        rsi_ax.axhline(20, color='green', linestyle='--', lw=0.8, label="_nolegend_")
+        # RSIパネル：目盛りの数値を明示的に設定
+        rsi_ax.set_yticks([20, 50, 80])  # ←シンプルでバランス良い
+        # 日本語ラベルもつけるなら以下
+        # rsi_ax.set_yticklabels(["0", "低", "やや低", "中間", "やや高", "高", "100"],
+        # fontproperties=jp_font)
+        # 日本語ラベルの表示場所（必要に応じて）
+        rsi_ax.set_ylabel("RSI", fontsize=9, fontproperties=jp_font)
+        rsi_ax.yaxis.set_label_position("right")
+        rsi_ax.yaxis.tick_right()
+        # 凡例表示
+        #rsi_ax.legend(loc="upper right", fontsize=8)
 
         ## Panel 3 = MACD
 
         # 保存と表示
+
+        # 各描画要素に日本語フォントを強制適用
+        for ax in axlist:
+            for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+                label.set_fontproperties(jp_font)
+            ax.set_title(ax.get_title(), fontproperties=jp_font)
+            ax.set_xlabel(ax.get_xlabel(), fontproperties=jp_font)
+            ax.set_ylabel(ax.get_ylabel(), fontproperties=jp_font)
+
         # 各パネルに凡例（legend）を追加
         for ax in axlist:
-            ax.legend(loc="upper right", fontsize=8)
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:  # 凡例に表示すべきものがあれば追加
+                ax.legend(loc="upper right", fontsize=8)
+
+        # 凡例を分離して左右に表示
+        handles, labels = price_ax.get_legend_handles_labels()
+
+        # 分類（支持線・抵抗線だけ左、それ以外は右）
+        left_handles = []
+        left_labels = []
+        right_handles = []
+        right_labels = []
+
+        for h, l in zip(handles, labels):
+            if "支持線" in l or "抵抗線" in l:
+                left_handles.append(h)
+                left_labels.append(l)
+            else:
+                right_handles.append(h)
+                right_labels.append(l)
+
+        # 左上だけの凡例（4本のラインだけを明示順に）
+        legend_left = price_ax.legend(
+            handles=[
+                resist60_line, resist20_line,
+                support20_line, support60_line
+            ],
+            labels=[
+                "抵抗線（中期60日）", "抵抗線（短期20日）",
+                "支持線（短期20日）", "支持線（中期60日）"
+            ],
+            loc="upper left",
+            fontsize=8,
+            frameon=True,
+            fancybox=True,
+            framealpha=1.0,  # 一旦フルにして get_frame() で制御
+            borderpad=0.5,
+            prop=jp_font  # ← 文字化け防止！
+        )
+        legend_left.set_zorder(0)                      # 🔽 一番奥へ
+        legend_left.get_frame().set_alpha(0.3)         # 🔍 背景だけ薄く
+        price_ax.add_artist(legend_left)
+
+        # 右上：MA系・スイング系など
+        handles, labels = price_ax.get_legend_handles_labels()
+        right_handles = []
+        right_labels = []
+
+        for h, l in zip(handles, labels):
+            if l not in ["抵抗線（中期60日）", "抵抗線（短期20日）", "支持線（短期20日）", "支持線（中期60日）"]:
+                right_handles.append(h)
+                right_labels.append(l)
+
+        price_ax.legend(
+            right_handles, right_labels,
+            loc="upper right",
+            fontsize=8,
+            frameon=True,
+            fancybox=True,
+            framealpha=0.8,
+            borderpad=0.5,
+            prop=jp_font
+        )
+
         fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
         fig.savefig("chart_output.png", dpi=150, bbox_inches="tight")
         plt.show()
