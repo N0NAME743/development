@@ -1,52 +1,3 @@
-##### Memo
-📘 日本株スイングトレード分析スクリプト
-
-[仕組み]
-1.Googleドライブに保存しているスプレット上に「銘柄コード」を入力
-2.Google Colab上で、このスクリプトを実行すると
-    「株価データ」、「テクニカル情報」などを（表＋チャート）画像として、出力
-[実装機能]
-    ver1.00
-    ・Googleドライブとの連携
-    ver1.01
-    ・表示フラグで、画像の保存オン・オフ機能を実装
-    ver1.02
-    ・コードの見栄えを少し修正した。
-    ・外部ファイルのコードを末尾に追記
-    ver1.10
-    ・サポートライン、レジスタラインをグラフ上に追記
-    ・ピポットポイントをグラフ上に追記
-    ・チャートのコードを修正した。
-    ver1.11
-    ・チャートグラフの内容を大幅に修正した。
-    ・チャート表示のデバッグコードを追加した。
-    ・ボリンジャーバンドの表示を追加した➡非表示（デフォルト）
-    ver1.20｜コード修正途中
-    ・コードの中身を整えて、不要なコード等を削除した。
-    ・旧テーブル表記（Styler）を削除し、HTMLテーブルで画像の保存処理を作った。
-    ver1.21
-    ・コードの順序を整理した。
-    ・チャートの表示を微調整＋タイトル／サブタイトルを表示するようにした。
-    ver1.22
-    ・総合評価の部分を末尾から「チャート」、「表」の真ん中に移動させた。
-    ・スコアのコードを自動で算出するようにした（※要調整）
-    ver1.23
-    ・初期実行の部分のコードを整理した。
-    ・RSIのチャート上の表記方法を修正した（※要調整）
-    ・テーブルのコメント欄の内容に応じて、セルの文字色を変えるようにした。
-    ・コメント欄のアイコン表示を消す＋[買い/売り/中立]➡[買弱/買強/売弱/売強/中立]に変更
-    ver2.00
-    ・Comment部の内容を大幅に修正し、スコア表示されるように対応した。
-    ・支持線、抵抗線をテーブルに追記＋判定ルール（コメント）を追加
-    ver2.01
-    ・総合評価コメントブロックを追加した。
-    ・表示がバグってる・・・※要修正
-    ver2.02
-    ・HTMLの構造をきちんと直した。
-[未実装機能]
-    ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
-##### Memo_END
-
 # ==============================
 # 🔧 初期セットアップと依存関係
 # ==============================
@@ -93,6 +44,7 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 import os
 import pandas as pd
+import random
 import re
 import yfinance as yf
 from datetime import datetime, timedelta, timezone
@@ -316,6 +268,10 @@ for symbol in symbols:
                     ratios.append(default_others)
             return ratios
 
+        df_recent["MA5"] = df_recent["Close"].rolling(window=5).mean()
+        df_recent["MA25"] = df_recent["Close"].rolling(window=25).mean()
+        df_recent["MA75"] = df_recent["Close"].rolling(window=75).mean()
+
         # ピボットポイント（株価にマーカー追加）
         price = df_recent["Close"].values
         high_idx = argrelextrema(price, np.greater, order=5)[0]
@@ -328,6 +284,9 @@ for symbol in symbols:
             mpf.make_addplot(high_marker, type='scatter', markersize=100, marker='^', color='red', panel=0),
             mpf.make_addplot(low_marker, type='scatter', markersize=100, marker='v', color='green', panel=0),
         ]
+
+        # 最終日のX座標（ローソク足の末尾）
+        x_pos = len(df_recent) - 1
 
         # ボリンジャーバンドの設定
         #if SHOW_BB:
@@ -388,6 +347,17 @@ for symbol in symbols:
             returnfig=True
         )
 
+        # ✅ MAラインの最終値を定義（描画前でも後でもOK）
+        ma5 = df_recent["MA5"].iloc[-1]
+        ma25 = df_recent["MA25"].iloc[-1]
+        ma75 = df_recent["MA75"].iloc[-1]
+
+        # 注釈表示（y方向に少し下げて表示）
+        price_ax = axlist[0]
+        price_ax.text(x_pos + 1, ma5 - 50, f"MA5: {ma5:.0f}", color="blue", fontsize=8)
+        price_ax.text(x_pos + 1, ma25 - 50, f"MA25: {ma25:.0f}", color="orange", fontsize=8)
+        price_ax.text(x_pos + 1, ma75 - 50, f"MA75: {ma75:.0f}", color="purple", fontsize=8)
+
         # 📌 事前設定：注釈のスタイル
         annotation_configs = {
             "High": {"offset": 30, "color": "darkred"},
@@ -403,6 +373,7 @@ for symbol in symbols:
         }
 
         # ✅ チャート描画（mplfinanceなどで axlist[0] を得たあと）
+
         # 🔽 Y軸に余白を追加（方法1）
         ymin, ymax = axlist[0].get_ylim()
         margin = (ymax - ymin) * 0.1  # 上下に10%の余白
@@ -1037,7 +1008,7 @@ for symbol in symbols:
 
             html = f"""
             <div style="text-align:center; background:#e0f0ff; padding:10px; font-weight:bold;">
-                2. 【総合評価】{eval_text}（スコア: {total_score:.1f} / 30点満点）
+                【総合評価】{eval_text}（スコア: {total_score:.1f} / 30点満点）
             </div>
             <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: monospace; margin-top:10px;">
                 <thead style="background-color:#f0f0f0;">
@@ -1170,6 +1141,15 @@ for symbol in symbols:
         }
         </style>
         """
+        legend_html = """
+        <p style="font-weight: bold; margin-top: 10px;">
+        📘 凡例（指標分類）：
+        <span style="background:#f0f8ff; padding: 2px 6px;">移動平均系</span>
+        <span style="background:#fffaf0; padding: 2px 6px;">オシレーター系</span>
+        <span style="background:#f5f5f5; padding: 2px 6px;">トレンド系</span>
+        <span style="background:#f0fff0; padding: 2px 6px;">ボラティリティ系</span>
+        </p>
+        """
 
         # ✅ 最終HTML構成
         full_html = f"""
@@ -1180,8 +1160,8 @@ for symbol in symbols:
         </head>
         <body>
         <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
-        {score_summary_html}  <!-- ← summary_html の代わりにこれを表示 -->
-        <br>{html_table}
+        {score_summary_html}
+        <br>{legend_html}{html_table}
         </body>
         </html>
         """
@@ -1191,7 +1171,7 @@ for symbol in symbols:
 
         save_combined_chart_and_table(
             chart_path=chart_path,
-            html_table=full_html, 
+            html_table=full_html,
             output_dir="/content/drive/MyDrive/ColabNotebooks/銘柄分析",
             symbol=symbol,
             name=name,
