@@ -8,11 +8,15 @@
 [実装機能]
     [Python_株式売買判断]
         ver1.00 ~ ver2.00まで実装
-    [Py_銘柄分析_関数化rev1.00]
+    [Py_銘柄分析_関数化rev1]
         ver1.00
         ・名称を変更→銘柄分析_関数化rev1.00に修正
         ・関数化後、HTML画像出力がうまくいっていなかったので、きちんと見直した。
         ・チャート表示やテーブル表示なども視認性を考慮し、修正した。
+        ver2.00
+        ・Section8,9の内容を大幅に修正
+            ➡保存処理：画像をGyazoにアップロードし、その内容をCSVとHTMLで出力
+            ➡実行処理：mainでの制御内容を記載
 
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
@@ -750,39 +754,112 @@ def evaluate_indicators(df):
 
     return comment_map, score_dict, category_counter
 
-def save_combined_chart_and_table(chart_path, html_table, output_dir, symbol, name, today_str, save_pdf=False):
-    import os
-    import imgkit
-    from PIL import Image
-    from IPython.display import display
+# ================================
+# Section8.0｜保存処理：関数定義・サブルーチン
+# ================================
 
-    # HTMLテーブルを一時ファイルに保存
-    temp_html_path = "/tmp/temp_table.html"
-    with open(temp_html_path, "w", encoding="utf-8") as f:
-        f.write(html_table)
+import os
+import imgkit
+import requests
+from PIL import Image
+from IPython.display import display
+import csv
+from pathlib import Path
+import pandas as pd
+import hashlib
+from datetime import datetime, timedelta, timezone
+import shutil
+import traceback
+from matplotlib import font_manager
 
-    # テーブル画像を保存
-    table_img_path = chart_path.replace(".png", "_table.png")
+# ✅ 日本語フォント設定
+font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+jp_font = font_manager.FontProperties(fname=font_path)
+
+# ✅ 保存先フォルダ共通設定（Drive内）
+REPORT_DIR = "/content/drive/MyDrive/ColabNotebooks/銘柄分析/report/"
+Path(REPORT_DIR).mkdir(parents=True, exist_ok=True)
+
+# ✅ Gyazoトークン
+GYAZO_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
+
+# ✅ キャッシュパス（Drive側に固定）
+GYAZO_CACHE_FILE = os.path.join(REPORT_DIR, "gyazo_uploaded.csv")
+CACHE_RETENTION_DAYS = 14
+
+# ✅ Gyazoアップロード
+def upload_to_gyazo(image_path, access_token):
+    with open(image_path, 'rb') as f:
+        files = {'imagedata': f}
+        data = {'access_token': access_token}
+        response = requests.post('https://upload.gyazo.com/api/upload', data=data, files=files)
+        if response.status_code == 200:
+            result = response.json()
+            return result.get("image_url") or result.get("url")
+        else:
+            raise Exception(f"Gyazoアップロード失敗: {response.status_code}, {response.text}")
+
+# ✅ HTMLハッシュ計算
+def hash_html(html_str):
+    return hashlib.md5(html_str.encode("utf-8")).hexdigest()
+
+# ✅ キャッシュ初期化（初回）
+def init_gyazo_cache_if_missing(path):
+    if not Path(path).exists():
+        print("🆕 Gyazoキャッシュファイルが存在しないため新規作成します。")
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["symbol", "date", "gyazo_url", "html_hash"])
+
+def load_gyazo_cache(path):
+    if Path(path).exists() and os.path.getsize(path) > 0:
+        try:
+            df = pd.read_csv(path, encoding="utf-8")
+            expected_columns = {"symbol", "date", "gyazo_url", "html_hash"}
+            if not expected_columns.issubset(df.columns):
+                raise ValueError(f"❌ キャッシュファイルに必要なカラムが足りません: {df.columns.tolist()}")
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            cutoff = datetime.now() - timedelta(days=CACHE_RETENTION_DAYS)
+            df = df[df["date"] >= cutoff].copy()
+            return df
+        except Exception as e:
+            print(f"⚠️ キャッシュ読み込みエラー: {e}")
+            return pd.DataFrame(columns=["symbol", "date", "gyazo_url", "html_hash"])
+    else:
+        return pd.DataFrame(columns=["symbol", "date", "gyazo_url", "html_hash"])
+
+def is_already_uploaded_with_same_html(cache_df, symbol, today_str, html_hash):
+    matched = cache_df[(cache_df["symbol"] == symbol) & (cache_df["date"] == today_str)]
+    if matched.empty:
+        return False
+    return matched.iloc[0]["html_hash"] == html_hash
+
+def append_to_gyazo_cache(path, symbol, today_str, url, html_hash):
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([symbol, today_str, url, html_hash])
+
+# ✅ HTML → PNG → 結合 → Gyazoアップロード
+def save_combined_chart_and_table(chart_path, html_table, symbol, name, today_str, gyazo_token):
     try:
+        temp_html_path = "/tmp/temp_table.html"
+        with open(temp_html_path, "w", encoding="utf-8") as f:
+            f.write(html_table)
+
+        table_img_path = chart_path.replace(".png", "_table.png")
         imgkit.from_file(
             temp_html_path,
             table_img_path,
             options={
                 "quiet": "",
-                "zoom": "2.0",         # 🔍 拡大倍率で文字を見やすく
+                "zoom": "2.0",
                 "encoding": "UTF-8",
-                "width": "1400",       # 💻 表が潰れにくくなる横幅指定
+                "width": "1400",
             }
         )
-    except Exception as e:
-        print(f"❌ テーブル画像化失敗: {e}")
-        return
 
-    try:
         chart_img = Image.open(chart_path)
         table_img = Image.open(table_img_path)
-
-        # 横幅を統一
         width = max(chart_img.width, table_img.width)
         chart_img = chart_img.resize((width, chart_img.height))
         table_img = table_img.resize((width, table_img.height))
@@ -792,47 +869,65 @@ def save_combined_chart_and_table(chart_path, html_table, output_dir, symbol, na
         combined_img.paste(chart_img, (0, 0))
         combined_img.paste(table_img, (0, chart_img.height))
 
-        # ✅ フォルダ構成：
-        # └── 銘柄分析/
-        #     └── 9348.T_ISPACE INC/
-        #         └── 9348.T_ISPACE INC_2025-06/
-        #             └── 9348.T_ISPACE INC_2025-06-09.jpg
-        month_str = today_str[:7]  # "2025-06"
-        subfolder_root = f"{symbol}_{name}"
-        subfolder_month = f"{subfolder_root}_{month_str}"
+        temp_output_path = f"/tmp/{symbol}_{today_str}.jpg"
+        combined_img.save(temp_output_path)
+        print(f"✅ 一時結合画像保存: {temp_output_path}")
 
-        full_output_dir = os.path.join(output_dir, subfolder_root, subfolder_month)
-        os.makedirs(full_output_dir, exist_ok=True)
-
-        # ✅ ファイル名
-        filename = f"{subfolder_root}_{today_str}.jpg"
-        output_path = os.path.join(full_output_dir, filename)
-
-        combined_img.save(output_path)
-        print(f"✅ 結合画像保存完了: {output_path}")
-
-        if save_pdf:
-            pdf_path = output_path.replace(".jpg", ".pdf")
-            combined_img.save(pdf_path, "PDF", resolution=100.0)
-            print(f"📄 PDF保存: {pdf_path}")
+        img_url = upload_to_gyazo(temp_output_path, gyazo_token)
+        print(f"🌐 Gyazoアップロード成功: {img_url}")
+        return img_url
 
     except Exception as e:
-        print(f"❌ 画像結合エラー: {e}")
+        print(f"❌ 画像結合 or Gyazoアップロードエラー: {e}")
+        return None
 
-from matplotlib import font_manager
-from datetime import datetime, timedelta, timezone
-import traceback  # ← 追加
+# ✅ HTMLレポート出力
+def export_to_html(results, filename):
+    html_filename = Path(filename).stem + ".html"
+    html_path = Path(REPORT_DIR) / html_filename  # 最初からDrive側に保存
 
-# ✅ 日本語フォント設定
-font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-jp_font = font_manager.FontProperties(fname=font_path)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write("<html><head><meta charset='utf-8'><style>")
+        f.write("table { border-collapse: collapse; width: 100%; }")
+        f.write("th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }")
+        f.write("</style></head><body>")
+        f.write("<h2>銘柄分析レポート</h2>")
+        f.write("<table>")
+        f.write("<tr><th>Symbol</th><th>Name</th><th>Time</th><th>プレビュー</th><th>リンク</th></tr>")
+
+        for row in results:
+            f.write("<tr>")
+            for i, col in enumerate(row):
+                if i == 3:
+                    try:
+                        url = col.split('"')[1]
+                        f.write(f"<td><a href='{url}' target='_blank'><img src='{url}' width='200'></a></td>")
+                    except:
+                        f.write("<td>ERROR</td>")
+                else:
+                    f.write(f"<td>{col}</td>")
+            f.write("</tr>")
+
+        f.write("</table></body></html>")
+
+    print(f"🌐 HTMLレポートもDriveに保存: {html_path}")
+
+# ================================
+# Section9.0｜main関数（実行ブロック）
+# ================================
 
 def main():
     JST = timezone(timedelta(hours=9))
-    today_str = datetime.now(JST).strftime("%Y-%m-%d")
+    now = datetime.now(JST)
+    today_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%Y-%m-%d_%H-%M")
 
     setup_environment()
     symbols = get_symbol_list()
+    results = []
+
+    init_gyazo_cache_if_missing(GYAZO_CACHE_FILE)
+    cache_df = load_gyazo_cache(GYAZO_CACHE_FILE)
 
     for symbol in symbols:
         try:
@@ -842,38 +937,60 @@ def main():
             df = add_technical_indicators(df)
             df_recent = df.tail(60).copy()
 
-            # ✅ データが少ない銘柄はスキップ
             if len(df_recent) < 10:
                 print(f"⚠️ {symbol} はデータ不足のためスキップ（{len(df_recent)}行）")
                 continue
 
-            # ✅ チャート生成
-            print("📈 generate_full_stock_chart を呼び出し")
             chart_path = generate_full_stock_chart(df_recent, symbol, name, today_str, jp_font)
-
-            # ✅ テーブル＆評価生成
             comment_map, score_dict, category_counter = evaluate_indicators(df)
             full_html, _ = generate_summary_html(
-                df, df_recent, comment_map, score_dict, category_counter,  # ← category_counter を追加！
+                df, df_recent, comment_map, score_dict, category_counter,
                 name, symbol, today_str, chart_path
             )
 
-            # ✅ チャート＋テーブル保存
-            save_combined_chart_and_table(
-                chart_path=chart_path,
-                html_table=full_html,
-                output_dir="/content/drive/MyDrive/ColabNotebooks/銘柄分析",
-                symbol=symbol,
-                name=name,
-                today_str=today_str,
-                save_pdf=False
-            )
+            html_hash = hash_html(full_html)
+
+            if is_already_uploaded_with_same_html(cache_df, symbol, today_str, html_hash):
+                print(f"🔁 スキップ: {symbol} は前回と同一内容")
+                img_url = cache_df.loc[
+                    (cache_df["symbol"] == symbol) & (cache_df["date"] == today_str),
+                    "gyazo_url"
+                ].values[0]
+            else:
+                img_url = save_combined_chart_and_table(
+                    chart_path=chart_path,
+                    html_table=full_html,
+                    symbol=symbol,
+                    name=name,
+                    today_str=today_str,
+                    gyazo_token=GYAZO_TOKEN
+                )
+                if img_url:
+                    append_to_gyazo_cache(GYAZO_CACHE_FILE, symbol, today_str, img_url, html_hash)
+
+            img_preview = f'=IMAGE("{img_url}", 1)' if img_url else "ERROR"
+            img_link = f'=HYPERLINK("{img_url}", "Gyazoで開く")' if img_url else "ERROR"
+            results.append([symbol, name, time_str, img_preview, img_link])
 
         except Exception as e:
             print(f"❌ {symbol} でエラー発生: {e}")
-            traceback.print_exc()  # ← 詳細なエラートレースを表示
+            traceback.print_exc()
+            results.append([symbol, "ERROR", time_str, "ERROR", "ERROR"])
+
+    output_filename = f"{today_str}_Symbol_total[{len(results)}].csv"
+    csv_path = os.path.join(REPORT_DIR, output_filename)
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Symbol", "Name", "Time", "Result", "Link"])
+        writer.writerows(results)
+
+    print(f"📁 CSVをGoogle Driveに保存: {csv_path}")
+    export_to_html(results, csv_path)
 
 # ==============================
 # ✅ 実行開始（ColabではこれでOK）
 # ==============================
+# 必要な認証はGoogle Driveへのアクセスのみ（Mount済なら不要）
+
+# 実行
 main()
