@@ -17,13 +17,15 @@
         ・Section8,9の内容を大幅に修正
             ➡保存処理：画像をGyazoにアップロードし、その内容をCSVとHTMLで出力
             ➡実行処理：mainでの制御内容を記載
+        ver3.00
+        ・HTMLの構成部分を関数化して視認性をあげた。
 
 [未実装機能]
     ・各指標（例：短期GC, MACD上昇, RSIが中立など）の組み合わせが過去にどれくらいの確率で勝てたか（＝終値が上がったか）を元に、
 ##### Memo_END
 
 # ==============================
-# Sec1.0｜初期Setup
+# Sec1.1｜初期Setup
 # ==============================
 
 # 🚀 ライブラリ・フォントのインストール（必要に応じてスキップ可）
@@ -52,11 +54,6 @@ JST = timezone(timedelta(hours=9))
 today_str = datetime.now(JST).strftime("%Y-%m-%d")
 print(f"📅 今日の日付（JST）：{today_str}")
 
-# --- Google Drive マウント
-from google.colab import drive
-drive.mount('/content/drive')
-print("✅ Google Drive がマウントされました")
-
 # --- データ処理・ファイル操作
 import pandas as pd
 import numpy as np
@@ -65,6 +62,7 @@ import re
 import io
 import shutil
 from collections import defaultdict
+from bs4 import BeautifulSoup
 
 # --- データ取得・指標・描画
 import yfinance as yf
@@ -78,6 +76,15 @@ from scipy.signal import argrelextrema
 import imgkit
 config = imgkit.config(wkhtmltoimage='/usr/bin/wkhtmltoimage')  # 必要に応じて
 from IPython.display import display, HTML, Image
+
+# --- Google Drive マウント
+import sys
+if "google.colab" in sys.modules:
+    from google.colab import drive
+    if not os.path.ismount("/content/drive"):
+        drive.mount('/content/drive')
+    else:
+        print("✅ Google Drive は既にマウントされています")
 
 # ✅ フォント設定（matplotlib + PIL）
 def setup_environment():
@@ -104,12 +111,12 @@ def setup_environment():
     print(f"✅ 使用フォント: {jp_font.get_name()}")
 
 # ==============================
-# Sec2.0｜Symbol取得（Googleスプレッドシート）
+# Sec2.1｜Symbol取得（Googleスプレッドシート）
 # ==============================
 def get_symbol_list():
     sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZrqf2NhMcD6ebNirrxSV_ibn1FTn2Rj-jrRI27nQcSEAgkqEQfvEZYitYoB1GT65S7qIrgGhMds1i/pub?gid=0&single=true&output=csv"
     try:
-        df_symbols = pd.read_csv(sheet_url)
+        df_symbols = pd.read_csv(sheet_url, encoding="utf-8")
         df_symbols.columns = df_symbols.columns.str.strip().str.lower()
         print(f"📄 読み込んだ列: {df_symbols.columns.tolist()}")
 
@@ -125,7 +132,7 @@ def get_symbol_list():
         return []
 
 # ================================
-# Sec3.0｜銘柄データ取得
+# Sec2.2｜銘柄データ取得
 # ================================
 
 def get_stock_data(symbol):
@@ -134,16 +141,25 @@ def get_stock_data(symbol):
     yfinanceを使って株価データを取得し、DataFrameと会社名を返す。
     """
     try:
-        info = yf.Ticker(symbol).info
-        name = info.get("shortName", symbol)
+        ticker = yf.Ticker(symbol)
+        try:
+            info = ticker.info
+            name = info.get("shortName", symbol)
+        except Exception:
+            name = symbol  # info取得失敗時も fallback
 
-        df = yf.download(symbol, period="15mo", interval="1d", auto_adjust=False)
+        # 🔽 データ取得はここで実行
+        df = ticker.history(period="18mo", interval="1d", auto_adjust=False)
+
+        if df.empty:
+            raise ValueError("取得結果が空です")
 
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
         df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"]).astype(float)
         df.index.name = "Date"
+
         return df, name
 
     except Exception as e:
@@ -151,7 +167,7 @@ def get_stock_data(symbol):
         return None, symbol
 
 # ================================
-# Sec4.0｜テクニカル指標
+# Sec3.1｜テクニカル指標
 # ================================
 
 def add_technical_indicators(df):
@@ -204,7 +220,78 @@ def add_technical_indicators(df):
       return df  # 途中でも使えるように返しておく
 
 # ================================
-# Sec5.0｜chart描画
+# Sec3.2｜ファンダメンタル指標取得（辞書形式）
+# ================================
+def add_fundamental_indicators(ticker_obj):
+    print("💹 ファンダメンタル指標の取得開始")
+    fund_data = {}
+
+    try:
+        info = ticker_obj.info
+    except Exception as e:
+        print(f"⚠️ info取得失敗: {type(e).__name__} - {e}")
+        info = {}
+
+    try:
+        fast_info = ticker_obj.fast_info
+    except Exception as e:
+        print(f"⚠️ fast_info取得失敗: {type(e).__name__} - {e}")
+        fast_info = {}
+
+    try:
+        fund_data = {
+            "MarketCap": info.get("marketCap", "N/A"),
+            "PER": info.get("trailingPE", "N/A"),
+            "ForwardPER": info.get("forwardPE", "N/A"),
+            "EPS": info.get("trailingEps", "N/A"),
+            "PBR": info.get("priceToBook", "N/A"),
+            "ROE": info.get("returnOnEquity", "N/A"),
+            "配当利回り": info.get("dividendYield", "N/A"),
+            "配当性向": info.get("payoutRatio", "N/A"),
+            "売上成長率": info.get("revenueGrowth", "N/A"),
+            "EPS成長率": info.get("earningsGrowth", "N/A"),
+            "自己資本比率": info.get("debtToEquity", "N/A"),
+            "流動比率": info.get("currentRatio", "N/A"),
+            "Beta": fast_info.get("beta", "N/A"),
+            "52週高値": fast_info.get("yearHigh", "N/A"),
+            "52週安値": fast_info.get("yearLow", "N/A"),
+        }
+        print("📘 ファンダメンタルデータ取得完了\n")
+    except Exception as e:
+        print(f"❌ 辞書変換エラー: {type(e).__name__} - {e}")
+        fund_data = {}
+
+    return fund_data
+
+def classify_fundamentals(fund_data):
+    growth = {
+        "売上成長率": fund_data.get("売上成長率", "N/A"),
+        "EPS成長率": fund_data.get("EPS成長率", "N/A"),
+    }
+    profitability = {
+        "ROE": fund_data.get("ROE", "N/A"),
+        "EPS": fund_data.get("EPS", "N/A"),
+        "PER": fund_data.get("PER", "N/A"),
+    }
+    valuation = {
+        "PBR": fund_data.get("PBR", "N/A"),
+        "PER": fund_data.get("PER", "N/A"),  # 重複ありでもOK
+        "MarketCap": fund_data.get("MarketCap", "N/A"),
+    }
+    liquidity = {
+        "流動比率": fund_data.get("流動比率", "N/A"),
+        "自己資本比率": fund_data.get("自己資本比率", "N/A"),
+    }
+
+    return {
+        "成長性": growth,
+        "収益性": profitability,
+        "割安性": valuation,
+        "財務健全性": liquidity
+    }
+
+# ================================
+# Sec4.1｜chart描画
 # ================================
 
 def generate_full_stock_chart(df_recent, symbol, name, today_str, jp_font, show_plot=True):
@@ -433,73 +520,17 @@ def generate_full_stock_chart(df_recent, symbol, name, today_str, jp_font, show_
     return chart_path
 
 # ================================
-# Sec6.0｜HTMLテーブル生成（カテゴリ列・直近5日対応）
+# Sec5.1｜HTMLテーブル生成（カテゴリ列・直近5日対応）
 # ================================
 
-import pandas as pd
-import re
-from datetime import datetime, timedelta
-from IPython.display import display, HTML
-from bs4 import BeautifulSoup
+def generate_summary_html(df, df_filtered, comment_map, score_dict, category_counter, name, symbol, today_str, chart_path, fundamentals):
+    # ✅ テクニカルテーブルを分離関数から取得
+    df_table = generate_technical_table(df, df_filtered, comment_map)
 
-# コメントに応じたスタイル付け関数
-def get_style_by_comment(comment):
-    if not comment:
-        return ""
-    match = re.match(r"^(買[強弱]?|売[強弱]?|中立)[|｜]", comment)
-    if not match:
-        return ""
-    signal = match.group(1)
-    color = "green" if "買" in signal else ("red" if "売" in signal else "")
-    weight = "bold" if "強" in signal else "normal"
-    return f"color: {color}; font-weight: {weight}"
-
-def generate_summary_html(df, df_filtered, comment_map, score_dict, category_counter, name, symbol, today_str, chart_path):
-    df_recent_week = df_filtered[-5:]
-    date_labels = [d.strftime("%Y-%m-%d") for d in df_recent_week.index]
-
-    def row(cat, label, values):
-        return [cat, label] + [f"{v:.2f}" if isinstance(v, (int, float)) else v for v in values] + [""]
-
-    table_data = []
-    table_data.append(row("基本情報", "株価（終値）", df_recent_week["Close"]))
-    table_data.append(row("基本情報", "出来高", df_recent_week["Volume"] / 10000))
-    table_data.append(row("チャート系", "支持線(直近20日)", df["Low"].rolling(20).min().iloc[-5:]))
-    table_data.append(row("チャート系", "抵抗線(直近20日)", df["High"].rolling(20).max().iloc[-5:]))
-    table_data.append(row("チャート系", "5DMA", df_recent_week["MA5"]))
-    table_data.append(row("チャート系", "25DMA", df_recent_week["MA25"]))
-    table_data.append(row("チャート系", "75DMA", df_recent_week["MA75"]))
-    table_data.append(row("チャート系", "200DMA", df_recent_week["MA200"]))
-    table_data.append(row("チャート系", "25日乖離率（%）", df_recent_week["MA25_Deviation"]))
-    table_data.append(row("オシレーター系", "RSI", df_recent_week["RSI"]))
-    table_data.append(row("オシレーター系", "ストキャス（%K）", df_recent_week["STOCH_K"]))
-    table_data.append(row("オシレーター系", "ストキャス（%D）", df_recent_week["STOCH_D"]))
-    table_data.append(row("トレンド系", "MACD", df_recent_week["MACD"]))
-    table_data.append(row("トレンド系", "ADX", df_recent_week["ADX"]))
-    table_data.append(row("ボラティリティ系", "BB上限", df_recent_week["BB_High"]))
-    table_data.append(row("ボラティリティ系", "BB中央", df_recent_week["BB_MAVG"]))
-    table_data.append(row("ボラティリティ系", "BB下限", df_recent_week["BB_Low"]))
-
-    prev_cat = None
-    for row_data in table_data:
-        if row_data[0] == prev_cat:
-            row_data[0] = ""
-        else:
-            prev_cat = row_data[0]
-
-    for row_data in table_data:
-        key = row_data[1]
-        entry = comment_map.get(key, [])
-        comment = f"{entry[0]['signal']}｜{entry[0]['detail']} {entry[0]['note']}".strip() if entry else ""
-        row_data[-1] = comment
-
-    columns = ["カテゴリ", "指標"] + date_labels + ["コメント"]
-    df_table = pd.DataFrame(table_data, columns=columns)
-    df_table.reset_index(drop=True, inplace=True)
-
-    # HTMLテーブル + CSS 生成（index列非表示）
+    # ✅ HTML生成
     html_table = df_table.to_html(index=False, escape=False, border=0, classes="styled-table")
 
+    # ✅ スタイル（元のまま）
     style = """
     <style>
     .styled-table {
@@ -507,7 +538,8 @@ def generate_summary_html(df, df_filtered, comment_map, score_dict, category_cou
         width: 100%;
         font-family: monospace;
         font-size: 14px;
-        table-layout: auto;
+        table-layout: fixed; #default=auto
+        word-wrap: break-word;
     }
     .styled-table th {
         background-color: #e8f4ff;
@@ -540,7 +572,7 @@ def generate_summary_html(df, df_filtered, comment_map, score_dict, category_cou
     </style>
     """
 
-    # コメント列に属性付加
+    # ✅ BeautifulSoupで信号ラベル付加（元のまま）
     soup = BeautifulSoup(html_table, "html.parser")
     for row in soup.find_all("tr")[1:]:
         cells = row.find_all("td")
@@ -551,41 +583,27 @@ def generate_summary_html(df, df_filtered, comment_map, score_dict, category_cou
                 cells[-1]["class"] = "comment-cell"
                 cells[-1]["data-signal"] = signal_match.group(1)
 
+    # ✅ スコアバー（そのまま）
     def score_bar(score):
         filled = min(int(abs(score) + 0.5), 10)
         empty = 10 - filled
         bar = ("<span style='color:red;'>" + "■" * filled + "</span>" if score < 0 else "■" * filled) + "□" * empty
         return f"<span class='score-cell'>{score:.1f}点｜{bar}</span>"
 
+    # ✅ スコアバー
     total_score = sum(score_dict.values())
     score_html = f"""
     <div style='text-align:center; background:#e0f0ff; padding:10px; font-weight:bold;'>
         【総合評価】スコア: {total_score:.1f} / 30点満点
     </div>
-
-    <table border='1' cellpadding='6' cellspacing='0'
-          style='border-collapse: collapse; font-family: monospace; margin-top:10px; width: 100%;'>
-        <thead style='background-color:#f0f0f0;'>
-            <tr>
-                <th>ファンダメンタル</th>
-                <th>テクニカル</th>
-                <th>チャート</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td class='score-td'>{score_bar(score_dict['fundamental'])}</td>
-                <td class='score-td'>{score_bar(score_dict['technical'])}</td>
-                <td class='score-td'>{score_bar(score_dict['chart'])}</td>
-            </tr>
-        </tbody>
-    </table>
     """
 
+    # ✅ ファンダメンタルHTML + 統合HTML生成
+    fundamental_html = generate_fundamental_html_with_bars(fundamentals)
     full_html = f"""
     <html><head><meta charset='utf-8'>{style}</head><body>
     <h4>{name}（{symbol}）｜取得日: {today_str}</h4>
-    {score_html}<br>{str(soup)}
+    {score_html}<br>{str(soup)}<br><br>{fundamental_html}
     </body></html>
     """
 
@@ -593,7 +611,58 @@ def generate_summary_html(df, df_filtered, comment_map, score_dict, category_cou
     return full_html, df_table
 
 # ================================
-# Sec7.0｜Comment/Score処理
+# Sec5.2｜テクニカルHTML生成
+# ================================
+
+def generate_technical_table(df, df_filtered, comment_map):
+    df_recent_week = df_filtered[-5:]
+    date_labels = [d.strftime("%Y-%m-%d") for d in df_recent_week.index]
+
+    def row(cat, label, values):
+        return [cat, label] + [f"{v:.2f}" if isinstance(v, (int, float)) else v for v in values] + [""]
+
+    table_data = []
+    table_data.append(row("基本情報", "株価（終値）", df_recent_week["Close"]))
+    table_data.append(row("基本情報", "出来高", df_recent_week["Volume"] / 10000))
+    table_data.append(row("チャート系", "支持線(直近20日)", df["Low"].rolling(20).min().iloc[-5:]))
+    table_data.append(row("チャート系", "抵抗線(直近20日)", df["High"].rolling(20).max().iloc[-5:]))
+    table_data.append(row("チャート系", "5DMA", df_recent_week["MA5"]))
+    table_data.append(row("チャート系", "25DMA", df_recent_week["MA25"]))
+    table_data.append(row("チャート系", "75DMA", df_recent_week["MA75"]))
+    table_data.append(row("チャート系", "200DMA", df_recent_week["MA200"]))
+    table_data.append(row("チャート系", "25日乖離率（%）", df_recent_week["MA25_Deviation"]))
+    table_data.append(row("オシレーター系", "RSI", df_recent_week["RSI"]))
+    table_data.append(row("オシレーター系", "ストキャス（%K）", df_recent_week["STOCH_K"]))
+    table_data.append(row("オシレーター系", "ストキャス（%D）", df_recent_week["STOCH_D"]))
+    table_data.append(row("トレンド系", "MACD", df_recent_week["MACD"]))
+    table_data.append(row("トレンド系", "ADX", df_recent_week["ADX"]))
+    table_data.append(row("ボラティリティ系", "BB上限", df_recent_week["BB_High"]))
+    table_data.append(row("ボラティリティ系", "BB中央", df_recent_week["BB_MAVG"]))
+    table_data.append(row("ボラティリティ系", "BB下限", df_recent_week["BB_Low"]))
+
+    # カテゴリの繰り返しを空欄に
+    prev_cat = None
+    for row_data in table_data:
+        if row_data[0] == prev_cat:
+            row_data[0] = ""
+        else:
+            prev_cat = row_data[0]
+
+    # コメント追加
+    for row_data in table_data:
+        key = row_data[1]
+        entry = comment_map.get(key, [])
+        comment = f"{entry[0]['signal']}｜{entry[0]['detail']} {entry[0]['note']}".strip() if entry else ""
+        row_data[-1] = comment
+
+    columns = ["カテゴリ", "指標"] + date_labels + ["コメント"]
+    df_table = pd.DataFrame(table_data, columns=columns)
+    df_table.reset_index(drop=True, inplace=True)
+
+    return df_table
+
+# ================================
+# Sec5.2.1｜Comment/Score処理
 # ================================
 
 # スコアルール辞書（簡略化も可能）
@@ -755,7 +824,154 @@ def evaluate_indicators(df):
     return comment_map, score_dict, category_counter
 
 # ================================
-# Section8.0｜保存処理：関数定義・サブルーチン
+# Sec5.3｜ファンダメンタルHTML生成
+# ================================
+
+def score_bar(score):
+    filled = min(int(round(score)), 10)
+    empty = 10 - filled
+    bar = "■" * filled + "□" * empty
+    return f"<span style='font-family:monospace;'>{score:.1f}点｜{bar}</span>"
+
+def score_fundamental_value(key, val):
+    try:
+        if val == "N/A" or val is None:
+            return 0.0
+        v = float(val)
+
+        # 各指標ごとのスコア化（10点満点基準）
+        if key == "PER":
+            return max(0, min(10, 20 - v))  # PER 5〜15なら高得点
+        elif key == "ForwardPER":
+            return max(0, min(10, 20 - v))
+        elif key == "PBR":
+            return max(0, min(10, 5 - v))
+        elif key == "ROE":
+            return min(10, v * 100 / 10)  # 10%以上で満点
+        elif key == "配当利回り":
+            return min(10, v * 100 / 3)  # 3%以上で満点
+        elif key == "配当性向":
+            return max(0, min(10, 10 - abs(v * 100 - 60) / 10))  # 60%が理想
+        elif key == "自己資本比率":
+            return min(10, v / 10)  # 50%以上で満点
+        elif key == "流動比率":
+            return min(10, v / 0.3)  # 3倍以上で満点
+        elif key == "売上成長率":
+            return min(10, max(0, v * 100 * 2))  # 5%以上で満点
+        elif key == "EPS成長率":
+            return min(10, max(0, v * 100 * 2))
+        else:
+            return 0.0
+    except:
+        return 0.0
+
+def generate_fundamental_html_with_bars(fund_dict):
+    category_map = {
+        "成長性": ["売上成長率", "EPS成長率"],
+        "割安性": ["PER", "PBR", "ForwardPER"],
+        "財務性": ["自己資本比率", "流動比率", "ROE", "Beta"],
+        "配当性": ["配当利回り", "配当性向"],
+        "その他": ["MarketCap", "EPS", "52週高値", "52週安値"]
+    }
+
+    html_sections = ""
+    for category, keys in category_map.items():
+        rows = ""
+        for key in keys:
+            val = fund_dict.get(key, "N/A")
+            score = score_fundamental_value(key, val)
+            bar_html = score_bar(score) if isinstance(score, (int, float)) else "N/A"
+            rows += f"<tr><td>{key}</td><td>{bar_html}</td></tr>"
+
+        html_sections += f"""
+        <h4>📘 {category}</h4>
+        <table border='1' cellpadding='6' cellspacing='0'
+               style='border-collapse: collapse; font-family: monospace; width: 100%; margin-bottom: 20px;'>
+            <thead style='background-color:#e0f0ff;'>
+                <tr><th>指標</th><th>評価</th></tr>
+            </thead>
+            <tbody>{rows}</tbody>
+        </table>
+        """
+    return html_sections
+
+# ================================
+# Sec5.4｜スコア関数
+# ================================
+
+def generate_score_section(score_dict):
+    def score_bar(score):
+        filled = min(int(abs(score) + 0.5), 10)
+        empty = 10 - filled
+        bar = ("<span style='color:red;'>" + "■" * filled + "</span>"
+               if score < 0 else "■" * filled) + "□" * empty
+        return f"<span class='score-cell'>{score:.1f}点｜{bar}</span>"
+
+    total_score = sum(score_dict.values())
+
+    score_html = f"""
+    <div style='text-align:center; background:#e0f0ff; padding:10px; font-weight:bold;'>
+        【総合評価】スコア: {total_score:.1f} / 30点満点
+    </div>
+
+    <table border='1' cellpadding='6' cellspacing='0'
+          style='border-collapse: collapse; font-family: monospace; margin-top:10px; width: 100%;'>
+        <thead style='background-color:#f0f0f0;'>
+            <tr>
+                <th>ファンダメンタル</th>
+                <th>テクニカル</th>
+                <th>チャート</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class='score-td'>{score_bar(score_dict['fundamental'])}</td>
+                <td class='score-td'>{score_bar(score_dict['technical'])}</td>
+                <td class='score-td'>{score_bar(score_dict['chart'])}</td>
+            </tr>
+        </tbody>
+    </table>
+    """
+    return score_html
+
+# 補助関数
+def generate_score_section(score_dict):
+    def score_bar(score):
+        filled = min(int(abs(score) + 0.5), 10)
+        empty = 10 - filled
+        bar = ("<span style='color:red;'>" + "■" * filled + "</span>"
+               if score < 0 else "■" * filled) + "□" * empty
+        return f"<span class='score-cell'>{score:.1f}点｜{bar}</span>"
+
+    total_score = sum(score_dict.values())
+
+    score_html = f"""
+    <div style='text-align:center; background:#e0f0ff; padding:10px; font-weight:bold;'>
+        【総合評価】スコア: {total_score:.1f} / 30点満点
+    </div>
+
+    <table border='1' cellpadding='6' cellspacing='0'
+           style='border-collapse: collapse; font-family: monospace; margin-top:10px; width: 100%;'>
+        <thead style='background-color:#f0f0f0;'>
+            <tr>
+                <th>ファンダメンタル</th>
+                <th>テクニカル</th>
+                <th>チャート</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class='score-td'>{score_bar(score_dict['fundamental'])}</td>
+                <td class='score-td'>{score_bar(score_dict['technical'])}</td>
+                <td class='score-td'>{score_bar(score_dict['chart'])}</td>
+            </tr>
+        </tbody>
+    </table>
+    """
+    return score_html
+
+# ================================
+# Sec6.1｜保存処理：関数定義・サブルーチン
 # ================================
 
 import os
@@ -913,7 +1129,7 @@ def export_to_html(results, filename):
     print(f"🌐 HTMLレポートもDriveに保存: {html_path}")
 
 # ================================
-# Section9.0｜main関数（実行ブロック）
+# Sec6.2｜main関数（実行ブロック）
 # ================================
 
 def main():
@@ -942,10 +1158,15 @@ def main():
                 continue
 
             chart_path = generate_full_stock_chart(df_recent, symbol, name, today_str, jp_font)
+
+            # ✅ ファンダメンタル指標取得を追加（重要！）
+            ticker = yf.Ticker(symbol)
+            fundamentals = add_fundamental_indicators(ticker)
+
             comment_map, score_dict, category_counter = evaluate_indicators(df)
             full_html, _ = generate_summary_html(
                 df, df_recent, comment_map, score_dict, category_counter,
-                name, symbol, today_str, chart_path
+                name, symbol, today_str, chart_path, fundamentals
             )
 
             html_hash = hash_html(full_html)
