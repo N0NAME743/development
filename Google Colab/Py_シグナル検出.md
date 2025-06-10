@@ -19,8 +19,9 @@ from google.colab import drive
 # Sec2｜定義・関数
 # ================================
 
-SAVE_PATH = "MyDrive/ColabNotebooks/銘柄分析/signal/backup"  # 🔧 ここを変更すれば保存先のフォルダパスを変更できます（例："MyDrive/StockReports"）
+SAVE_PATH = "/content/drive/ColabNotebooks/銘柄分析/signal/backup"  # 🔧 ここを変更すれば保存先のフォルダパスを変更できます
 
+# GoogleDrive関数
 def mount_drive():
     drive.mount('/content/drive')
 
@@ -28,11 +29,6 @@ def authenticate_services():
     auth.authenticate_user()
     creds, _ = google.auth.default()
     return creds, gspread.authorize(creds)
-
-def get_today_str():
-    JST = timezone(timedelta(hours=9))
-    now = datetime.now(JST)
-    return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S")
 
 def get_drive_folder_id_by_path(path, creds):
     service = build('drive', 'v3', credentials=creds)
@@ -54,32 +50,45 @@ def get_drive_folder_id_by_path(path, creds):
             parent_id = file['id']
     return parent_id, service
 
-def search_and_move_file_by_name(service, file_name, folder_id):
-    """ファイル名で検索して、指定フォルダに移動する"""
-    query = f"name='{file_name}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
-    results = service.files().list(q=query, fields='files(id, name)').execute()
+def delete_existing_file_by_name(drive_service, folder_id, file_name):
+    # backupフォルダ内で同名ファイルを検索して削除
+    query = f"'{folder_id}' in parents and name = '{file_name}' and mimeType = 'application/vnd.google-apps.spreadsheet'"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     files = results.get('files', [])
-    if not files:
-        print(f"⚠️ ファイルが見つかりません: {file_name}")
-        return
+    for file in files:
+        drive_service.files().delete(fileId=file['id']).execute()
 
-    file_id = files[0]['id']
-    try:
-        service.files().update(
-            fileId=file_id,
-            addParents=folder_id,
-            removeParents='root',
-            fields='id, parents'
-        ).execute()
-        print(f"📁 再移動成功: {file_name}")
-    except Exception as e:
-        print(f"❌ フォルダ再移動失敗: {file_name} - {e}")
+# 日付の取得
+def get_today_str():
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST)
+    return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S")
 
+# スプレッドシートのColum
 def reorder_columns(df, preferred_order):
     existing_cols = [col for col in preferred_order if col in df.columns]
     other_cols = [col for col in df.columns if col not in existing_cols]
     return df[existing_cols + other_cols]
 
+def clean_dataframe_columns(df, expected_cols):
+    """
+    DataFrameから重複列（例: 'MultiSign.1'）を取り除き、列順をexpected_colsに整える。
+    """
+    # 1. 期待される列名に対して、.1 や .2 がついた重複列があれば削除
+    deduped_cols = {}
+    for col in df.columns:
+        base_col = col.split('.')[0]
+        if base_col not in deduped_cols:
+            deduped_cols[base_col] = col  # 最初に出てきた正規名を採用
+
+    df = df[list(deduped_cols.values())]
+
+    # 2. 列順をexpected_colsの順に整える（存在する列のみ）
+    df = df[[col for col in expected_cols if col in df.columns]]
+
+    return df
+
+# Comment判定
 def format_signals_to_comment(signals, close=None, ma25=None, adx_value=None):
     phrases = []
     warnings = []
@@ -163,7 +172,6 @@ def format_signals_to_comment(signals, close=None, ma25=None, adx_value=None):
 def analyze_stock(hist):
     signals = []
     trend = "不明"
-    trend_score = 0.0
 
     close = hist["Close"]
     ma5 = close.rolling(window=5).mean()
@@ -205,29 +213,22 @@ def analyze_stock(hist):
     # === シグナル抽出 ===
     if macd.iloc[-2] < signal_line.iloc[-2] and macd.iloc[-1] > signal_line.iloc[-1] and macd.iloc[-1] > 0:
         signals.append("MACD")
-        trend_score += 1.0
     if ma5.iloc[-2] < ma25.iloc[-2] and ma5.iloc[-1] > ma25.iloc[-1] and close.iloc[-1] > ma25.iloc[-1]:
         signals.append("5MA>25MA")
-        trend_score += 1.0
     if rsi.iloc[-2] < 30 and rsi.iloc[-1] > 30 and rsi.iloc[-1] > rsi.iloc[-2] + 5:
         signals.append("RSI反発")
-        trend_score += 0.5
     if hist["Volume"].iloc[-1] > 1.5 * vol_ma5.iloc[-1] and hist["Volume"].iloc[-1] > hist["Volume"].iloc[-2]:
         signals.append("出来高↑")
-        trend_score += 1.0
     if close.iloc[-1] > max_high.iloc[-2] * 1.01:
         signals.append("高値突破")
-        trend_score += 1.0
 
     disparity = ((close.iloc[-1] - ma25.iloc[-1]) / ma25.iloc[-1]) * 100
     if abs(disparity) > 5:
         signals.append(f"乖離率{disparity:+.1f}%")
     if adx.iloc[-1] >= 40:
         signals.append("ADX強↑")
-        trend_score += 3.0
     elif adx.iloc[-1] >= 25:
         signals.append("ADX中↑")
-        trend_score += 2.0
     if range_std.iloc[-1] < 1.0:
         signals.append("ボックス相場")
     if range_std.iloc[-1] < 0.5 and not range_std.iloc[-2] < 0.5:
@@ -243,89 +244,122 @@ def analyze_stock(hist):
         else:
             trend = "不明"
 
-    return signals, adx_last, trend, round(trend_score, 1)
+    # ★ここで最新値を取得
+    rsi_last = rsi.iloc[-1] if not rsi.empty else None
+    # disparityはすでに計算済み
 
-def clean_dataframe_columns(df, expected_cols):
-    """
-    DataFrameから重複列（例: 'MultiSign.1'）を取り除き、列順をexpected_colsに整える。
-    """
-    # 1. 期待される列名に対して、.1 や .2 がついた重複列があれば削除
-    deduped_cols = {}
-    for col in df.columns:
-        base_col = col.split('.')[0]
-        if base_col not in deduped_cols:
-            deduped_cols[base_col] = col  # 最初に出てきた正規名を採用
+    score, overbought = calc_score(signals, adx_last, rsi_last, disparity)
+    return signals, adx_last, trend, score, rsi_last, disparity, overbought
 
-    df = df[list(deduped_cols.values())]
+# スコア判定処理
 
-    # 2. 列順をexpected_colsの順に整える（存在する列のみ）
-    df = df[[col for col in expected_cols if col in df.columns]]
-
-    return df
-
-def analyze_trend_and_score(signals, adx_value):
-    """
-    signals: シグナルのリスト（例: ["出来高↑", "高値突破", "乖離率+10.5%", "ADX中↑"]）
-    adx_value: 現在のADX値（float）
-
-    戻り値:
-        trend_label（例："上昇トレンド"）,
-        score_str（例："4.5/5.0"）,
-        mark（"◯" or "✕"）
-    """
+def calc_score(signals, adx_value, rsi_value=None, disparity_value=None):
     score = 0.0
-    max_score = 5.0
-
-    # ✅ 条件1: 出来高↑（+1点）
+    # 既存の加点ロジック
     if "出来高↑" in signals:
         score += 1.0
-
-    # ✅ 条件2: 高値突破（+1.5点）
     if "高値突破" in signals:
         score += 1.5
-
-    # ✅ 条件3: 乖離率 +10%以上（+1点）
     has_disparity = any(
         "乖離率" in s and float(s.replace("乖離率", "").replace("%", "").replace("+", "")) >= 10
         for s in signals
     )
     if has_disparity:
         score += 1.0
-
-    # ✅ 条件4: ADX値に応じた加点
     if adx_value is not None:
         if adx_value >= 40:
             score += 1.5
         elif adx_value >= 25:
             score += 1.0
 
-    # ✅ トレンド判定
-    if score >= 4.0:
+    # --- 過熱感による減点 ---
+    overbought = False
+    if rsi_value is not None and rsi_value >= 70:
+        score -= 1.0
+        overbought = True
+    if disparity_value is not None and abs(disparity_value) >= 10:
+        score -= 1.0
+        overbought = True
+
+    return max(score, 0), overbought  # スコアは0未満にならないように
+
+def judge_action_by_score(score):
+    """
+    スコアに応じてアクションを返す（3分類）
+    0～1   ：「静観（エントリー非推奨）」
+    2～3   ：「中立（慎重に検討）」
+    4～5   ：「積極検討（買い目線強）」
+    """
+    if 4.0 <= score <= 5.0:
+        return "積極検討（買い目線強）"
+    elif 2.0 <= score < 4.0:
+        return "中立（慎重に検討）"
+    elif 0.0 <= score < 2.0:
+        return "静観（エントリー非推奨）"
+    else:
+        return "スコア異常"
+
+def analyze_trend_and_score(signals, adx_value):
+    score = calc_score(signals, adx_value)
+    # トレンド判定
+    if 4.0 <= score <= 5.0:
         trend_label = "上昇トレンド"
-    elif score >= 2.5:
+    elif 2.0 <= score < 4.0:
         trend_label = "やや上昇傾向"
-    elif score >= 1.0:
+    elif 0.0 <= score < 2.0:
         trend_label = "横ばい〜警戒"
     else:
         trend_label = "トレンド不明"
-
-    # ✅ 表示用のスコアとマーク
     score_str = f"{round(score, 1)}/5.0"
-    mark = "◯" if score >= 4.0 else "✕"
-
+    mark = "◯" if 4.0 <= score <= 5.0 else "✕"
     return trend_label, score_str, mark
+
+def analyze_and_judge(hist, stock_name=""):
+    signals, adx_last, trend, trend_score = analyze_stock(hist)
+    score = calc_score(signals, adx_last)
+    comment = format_signals_to_comment(signals, 
+                                        close=hist["Close"].iloc[-1], 
+                                        ma25=hist["Close"].rolling(window=25).mean().iloc[-1], 
+                                        adx_value=adx_last)[0]
+    action = judge_action_by_score(score)
+    print(f"【{stock_name}】")
+    print(f"シグナル: {signals}")
+    print(f"スコア: {score}/5.0")
+    print(f"推奨アクション: {action}")
+    print(f"コメント: {comment}")
+    print("-" * 40)
+    return {
+        "stock": stock_name,
+        "signals": signals,
+        "score": score,
+        "action": action,
+        "comment": comment
+    }
+
+import numpy as np
+
+def symbol_to_num(symbol):
+    # .Tを除去し、数値部分のみ抽出
+    s = str(symbol).replace('.T', '')
+    try:
+        return int(float(s))
+    except ValueError:
+        return np.nan  # 数値化できない場合はNaN
 
 
 # ================================
 # ✅ メイン処理関数
 # ================================
 
-def process_all_sheets(spreadsheet_name):
+def process_all_sheets(spreadsheet_name, save_path):
+    global SAVE_PATH
     today_str, timestamp_str = get_today_str()
     creds, gc = authenticate_services()
     spreadsheet = gc.open(spreadsheet_name)
     sheet_list = spreadsheet.worksheets()
     folder_id, drive_service = get_drive_folder_id_by_path(SAVE_PATH, creds)
+
+    all_dfs = []  # ← ここでリストを初期化
 
     for worksheet in sheet_list:
         sheet_name = worksheet.title
@@ -336,83 +370,116 @@ def process_all_sheets(spreadsheet_name):
             print(f"⚠️ {sheet_name} にSymbol列がありません。スキップします。")
             continue
 
-        for col in ["Name", "Time", "Price", "Trend", "TrendScore", "Sign", "MultiSign"]:
+        # 列の初期化処理
+        for col in ["Name", "Time", "Price", "TrendScore", "Sign", "MultiSign", "Action"]:
             if col not in df.columns:
-                df[col] = ""
+                df[col] = pd.Series([""] * len(df), dtype="object")
+            else:
+                df[col] = df[col].astype("object")
+
         df["Time"] = df["Time"].astype(str)
 
         for i, row in df.iterrows():
-            raw_symbol = None  # try前に初期化
+            raw_symbol = None
             try:
-                raw_symbol = str(row["Symbol"]).strip().replace("$", "")
-                code = raw_symbol.replace(".T", "").zfill(4)
+                # シンボル前処理
+                raw_symbol = str(row["Symbol"]).strip().replace("$", "").replace(".T", "")
+                if "." in raw_symbol: raw_symbol = raw_symbol.split(".")[0]
+                code = raw_symbol.zfill(4)
                 ticker = f"{code}.T"
+                
+                # 株価データ取得
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="3mo")
                 if hist.empty or len(hist) < 30:
+                    print(f"⚠️ データ不足: {ticker} - ヒストリカルデータ{len(hist)}件")
                     continue
 
-                latest_price = round(hist["Close"].iloc[-1], 2)
-                df.at[i, "Price"] = latest_price
+                # 基本情報更新
+                df.at[i, "Price"] = round(hist["Close"].iloc[-1], 2)
+                if pd.isnull(row["Name"]) or row["Name"] == "":
+                    df.at[i, "Name"] = stock.info.get("shortName", "")
 
-                if not pd.notnull(row["Name"]) or row["Name"] == "":
-                    name = stock.info.get("shortName", "")
-                    df.at[i, "Name"] = name
-
-                signals, adx_value, trend, trend_score = analyze_stock(hist)
-                sign_str = "✅ " + ", ".join(signals) if signals else ""
-                df.at[i, "Sign"] = sign_str
-
+                # 分析処理
+                signals, adx_last, trend, score, rsi_last, disparity, overbought = analyze_stock(hist)
+                df.at[i, "Sign"] = "✅ " + ", ".join(signals) if signals else ""
+                
+                # コメント生成
                 comment, _ = format_signals_to_comment(
                     signals,
                     close=hist["Close"].iloc[-1],
                     ma25=hist["Close"].rolling(25).mean().iloc[-1],
-                    adx_value=adx_value
+                    adx_value=adx_last  # ← adx_lastを使用
                 )
                 df.at[i, "MultiSign"] = comment
                 df.at[i, "Time"] = timestamp_str
-                df.at[i, "Trend"] = trend
-                df.at[i, "TrendScore"] = trend_score
+                
+                # スコア計算とアクション判定
+                score, overbought = calc_score(signals, adx_last, rsi_last, disparity)
+                df.at[i, "TrendScore"] = round(score, 1)
+                
+                action = judge_action_by_score(score)
+                if overbought and action == "積極検討（買い目線強）":
+                    action = "中立（過熱感警戒）"
+                df.at[i, "Action"] = action
 
             except Exception as e:
                 print(f"⚠️ エラー: {raw_symbol or '不明'} - {e}")
 
-        # 列順の並び替えと重複列のクリーンアップ
-        df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "Trend", "TrendScore", "Sign", "MultiSign"])
-        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "Trend", "TrendScore", "Sign", "MultiSign"])
+        # データ整形
+        df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "TrendScore", "Sign", "MultiSign"])
+        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "TrendScore", "Sign", "MultiSign"])
+        df["Symbol"] = df["Symbol"].astype(str).str.replace(r"\.T$", "", regex=True) + ".T"
 
+        all_dfs.append(df.copy())  # ← データ整形後に追加
+
+        # スプレッドシート更新
         worksheet.clear()
         set_with_dataframe(worksheet, df.fillna(""))
-
-        # スプレッドシート出力
+        
+        # バックアップ作成
         new_sheet_title = f"Watchlist_{sheet_name}_{today_str}"
         try:
-            new_spreadsheet = gc.create(new_sheet_title)
-            new_spreadsheet_id = new_spreadsheet.id
-            if folder_id:
-                try:
-                    drive_service.files().update(
-                        fileId=new_spreadsheet_id,
-                        addParents=folder_id,
-                        removeParents='root',
-                        fields='id, parents'
-                    ).execute()
-                except Exception:
-                    search_and_move_file_by_name(drive_service, new_sheet_title, folder_id)
-
-            new_worksheet = new_spreadsheet.get_worksheet(0)
-            set_with_dataframe(new_worksheet, df.fillna(""))
-            print(f"✅ 完了: {new_sheet_title} を保存しました\n")
-
+            delete_existing_file_by_name(drive_service, folder_id, new_sheet_title)
+            new_spreadsheet = gc.create(new_sheet_title, folder_id)
+            set_with_dataframe(new_spreadsheet.sheet1, df.fillna(""))
+            print(f"✅ 完了: {new_sheet_title}")
         except Exception as e:
             print(f"❌ 作成失敗: {new_sheet_title} - {e}")
 
+    # --- 追加処理ここから ---
+    if all_dfs:
+        all_df = pd.concat(all_dfs, ignore_index=True)
+        # 数値変換処理を厳密化
+        filtered = all_df[pd.to_numeric(all_df["TrendScore"], errors="coerce").ge(3)].copy()
+        filtered["SymbolNum"] = filtered["Symbol"].apply(symbol_to_num)
+        filtered = filtered.sort_values("SymbolNum", na_position='last').drop("SymbolNum", axis=1)
+
+        new_sheet_title = f"watchlist_signal_{today_str}"
+        try:
+            delete_existing_file_by_name(drive_service, folder_id, new_sheet_title)
+            new_spreadsheet = gc.create(new_sheet_title, folder_id)
+            set_with_dataframe(new_spreadsheet.sheet1, filtered.fillna(""))
+            print(f"✅ 完了: {new_sheet_title}")
+        except Exception as e:
+            print(f"❌ 作成失敗: {new_sheet_title} - {e}")
+    else:
+        print("⚠️ 有効なデータが1件もありませんでした。watchlist_signalファイルは作成されません。")
+    # --- 追加処理ここまで ---
+
+    # 全処理終了後（print("🎉 ...")の前）に追加
+    print("\n🔬 デバッグ情報:")
+    print(f"全シート数: {len(sheet_list)}")
+    print(f"処理済みシート数: {len(all_dfs)}")
+    print(f"全データ件数: {len(all_df) if all_dfs else 0}")
+    print(f"フィルタ後件数: {len(filtered) if all_dfs else 0}")
+
     print("🎉 すべての処理が完了しました")
 
-# main関数の定義（エントリーポイント）
 def main():
-    spreadsheet_name = "watchlist"  # 🔧 対象のスプレッドシート名を入力
+    spreadsheet_name = "watchlist"
+    SAVE_PATH = "MyDrive/ColabNotebooks/銘柄分析/signal/backup"
     mount_drive()
-    process_all_sheets(spreadsheet_name)
+    process_all_sheets(spreadsheet_name, SAVE_PATH)
 
 main()
