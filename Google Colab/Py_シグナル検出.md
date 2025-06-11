@@ -3,6 +3,7 @@
 # ================================
 
 !pip install --upgrade gspread gspread_dataframe google-auth yfinance --quiet
+!pip install ta --quiet
 
 import os
 import pandas as pd
@@ -19,9 +20,13 @@ from google.colab import drive
 import time
 from collections import defaultdict
 
+pd.set_option('future.no_silent_downcasting', True)
+
 # ================================
 # Sec2｜定義・関数
 # ================================
+
+import numpy as np
 
 SAVE_PATH = "drive/MyDrive/ColabNotebooks/銘柄分析/signal"  # 🔧 保存先のパスを正しく設定
 BACKUP_SUBFOLDER = "backup"  # 🔧 バックアップはこのサブフォルダに
@@ -84,6 +89,14 @@ def reorder_columns(df, preferred_order):
     other_cols = [col for col in df.columns if col not in existing_cols]
     return df[existing_cols + other_cols]
 
+def symbol_to_num(symbol):
+    # .Tを除去し、数値部分のみ抽出
+    s = str(symbol).replace('.T', '')
+    try:
+        return int(float(s))
+    except ValueError:
+        return np.nan  # 数値化できない場合はNaN
+
 def clean_dataframe_columns(df, expected_cols):
     """
     DataFrameから重複列（例: 'MultiSign.1'）を取り除き、列順をexpected_colsに整える。
@@ -102,285 +115,281 @@ def clean_dataframe_columns(df, expected_cols):
 
     return df
 
+def normalize_symbol_column(df):
+    """
+    Symbol列を "XXXX.T" 形式に統一する
+    - float形式の .0 除去
+    - .T の重複除去
+    - .0.T の誤変換除去
+    """
+    def clean_symbol(val):
+        try:
+            val = str(val).strip().replace('$', '')
+            val = val.replace('.0.T', '')  # ← 追加ポイント
+            if val.endswith('.0'):
+                val = val[:-2]
+            val = val.replace('.T', '')  # 重複除去
+            return val + '.T'
+        except:
+            return ""
+
+    if "Symbol" in df.columns:
+        df["Symbol"] = df["Symbol"].apply(clean_symbol)
+    return df
+
+import pandas as pd
+import numpy as np
+from ta.trend import ADXIndicator, MACD
+from ta.momentum import RSIIndicator
+
+def detect_candlestick_patterns(df):
+    """ローソク足の形状に基づいてシンプルなパターンを検出する"""
+    patterns = []
+
+    open_ = df["Open"].iloc[-1]
+    close = df["Close"].iloc[-1]
+    high = df["High"].iloc[-1]
+    low = df["Low"].iloc[-1]
+
+    body = abs(close - open_)
+    upper_shadow = high - max(open_, close)
+    lower_shadow = min(open_, close) - low
+
+    # 下髭陽線：陽線かつ長い下ヒゲ
+    if close > open_ and lower_shadow > body * 2:
+        patterns.append("下髭陽線")
+
+    # 陽の丸坊主：陽線で上下ヒゲが非常に短い
+    if close > open_ and upper_shadow < body * 0.1 and lower_shadow < body * 0.1:
+        patterns.append("陽の丸坊主")
+
+    return patterns
+
+def detect_multi_candle_patterns(df):
+    """複数日のローソク足形状に基づくパターンを検出"""
+    patterns = []
+
+    if len(df) < 5:
+        return patterns  # 過去3日必要
+
+    # 直近3日のデータ
+    last3 = df.iloc[-3:]
+    open_ = last3["Open"]
+    close = last3["Close"]
+    high = last3["High"]
+    low = last3["Low"]
+
+    # 三連続陽線
+    if all(close.values > open_.values):
+        patterns.append("三連続陽線")
+
+    # 三空踏み上げ（連続で上方向に窓を開けて始まる）
+    gaps = [
+        open_.iloc[1] > high.iloc[0],
+        open_.iloc[2] > high.iloc[1]
+    ]
+    if all(gaps):
+        patterns.append("三空踏み上げ")
+
+    return patterns
+
+def is_ath_breakout(df):
+    """終値が上場来高値付近にあるか判定"""
+    recent_high = df["High"].max()
+    return df["Close"].iloc[-1] >= recent_high * 0.995
+
+def analyze_stock(df):
+    try:
+        if len(df) < 30:
+            raise ValueError("データ不足")
+
+        df = df.copy()
+        close = df["Close"]
+        open_ = df["Open"]
+        high = df["High"]
+        low = df["Low"]
+        volume = df["Volume"]
+
+        df["MA5"] = close.rolling(5).mean()
+        df["MA25"] = close.rolling(25).mean()
+        df["RSI"] = RSIIndicator(close, window=14).rsi()
+        macd = MACD(close)
+        df["MACD"] = macd.macd()
+        df["MACD_signal"] = macd.macd_signal()
+        adx = ADXIndicator(high, low, close, window=14)
+        df["ADX"] = adx.adx()
+
+        rsi_last = df["RSI"].iloc[-1]
+        adx_last = df["ADX"].iloc[-1]
+        close_now = close.iloc[-1]
+        close_prev = close.iloc[-2]
+        open_now = open_.iloc[-1]
+        high_prev = high.iloc[-2]
+        low_prev = low.iloc[-2]
+        ma5_prev = df["MA5"].iloc[-2]
+        ma25_prev = df["MA25"].iloc[-2]
+        ma5_now = df["MA5"].iloc[-1]
+        ma25_now = df["MA25"].iloc[-1]
+        ma25 = ma25_now
+
+        disparity = ((close_now - ma25) / ma25) * 100 if ma25 else 0
+
+        signals = []
+
+        # === シグナル検出 ===
+        if df["MACD"].iloc[-2] < df["MACD_signal"].iloc[-2] and df["MACD"].iloc[-1] > df["MACD_signal"].iloc[-1]:
+            signals.append("MACD陽転")
+        if df["MACD"].iloc[-2] > df["MACD_signal"].iloc[-2] and df["MACD"].iloc[-1] < df["MACD_signal"].iloc[-1]:
+            signals.append("MACD陰転")
+
+        if ma5_prev < ma25_prev and ma5_now > ma25_now:
+            signals.append("短期ゴールデンクロス")
+        if ma5_prev > ma25_prev and ma5_now < ma25_now:
+            signals.append("短期デッドクロス")
+
+        if df["RSI"].iloc[-2] < 30 and rsi_last > 30:
+            signals.append("RSI反発")
+        if df["RSI"].iloc[-2] > 70 and rsi_last < 70:
+            signals.append("RSI過熱反転")
+
+        recent_high = df["High"].iloc[-20:-1].max()
+        if close_now > recent_high:
+            signals.append("直近高値突破")
+        elif close_now < recent_high * 0.98:
+            signals.append("高値反落")
+
+        if volume.iloc[-1] > volume.rolling(5).mean().iloc[-2] * 1.5:
+            signals.append("出来高↑")
+
+        if open_now > high_prev:
+            signals.append("窓開け上昇")
+        elif open_now < low_prev:
+            signals.append("窓開け下落")
+
+        pct_change = ((close_now - close_prev) / close_prev) * 100
+        if pct_change >= 7:
+            signals.append("急騰")
+        elif pct_change <= -7:
+            signals.append("急落")
+
+        if close_now >= df["High"].max() * 0.995:
+            signals.append("上場来高値突破")
+
+        signals.extend(detect_candlestick_patterns(df))
+        signals.extend(detect_multi_candle_patterns(df))
+
+        # ⭐ 注目度判定（スコアではなくsignalsに基づく）
+        def judge_attention(signals):
+            keywords = {
+                "★★★": ["三空踏み上げ", "上場来高値", "直近高値突破"],
+                "★★": ["三連続陽線", "MACD陽転", "短期ゴールデンクロス", "出来高↑"],
+                "★": ["RSI反発", "窓開け上昇"]
+            }
+            for star, keys in keywords.items():
+                if any(k in signals for k in keys):
+                    return star
+            return ""
+
+        attention_flag = judge_attention(signals)
+
+        # トレンド分類（スコアに関係なく残してOK）
+        if adx_last >= 40:
+            trend = "強トレンド"
+        elif adx_last >= 25:
+            trend = "中トレンド"
+        else:
+            trend = "弱トレンド"
+
+        return signals, adx_last, trend, rsi_last, disparity, attention_flag
+
+    except Exception as e:
+        print(f"❌ analyze_stock エラー: {e}")
+        return [], None, "不明", 0.0, None, ""
+
 # Comment判定
-def format_signals_to_comment(signals, close=None, ma25=None, adx_value=None):
+# 分析判定@2025-06-11.売り判定も追加
+def format_signals_to_comment(signals, adx_value=None):
     phrases = []
     warnings = []
-    score = 0
 
-    # --- MACD + 出来高 ---
-    if "MACD" in signals and "出来高↑" in signals:
-        phrases.append("MACDが陽転し、出来高の増加とともに買い圧力の高まりが見られます。")
-        score += 3
-    elif "MACD" in signals:
-        phrases.append("MACDが陽転し、短期的な上昇の兆しがあります。")
-        score += 2
-
-    # --- ゴールデンクロス ---
-    if "5MA>25MA" in signals:
-        phrases.append("移動平均線のゴールデンクロスが確認されました。")
-        score += 2
-
-    # --- RSI反発 ---
+    # ===== 買い傾向コメント =====
+    if "MACD陽転" in signals:
+        phrases.append("MACDが陽転し、買いの勢いが出始めています。")
+    if "短期ゴールデンクロス" in signals:
+        phrases.append("短期の移動平均線がゴールデンクロスを形成しています。")
     if "RSI反発" in signals:
-        if close is not None and ma25 is not None and close < ma25:
-            phrases.append("RSIが反発しており、底打ちの可能性があります。")
-        else:
-            phrases.append("RSIが反発していますが、やや高値圏のため慎重に見極めたいところです。")
-        score += 1.5
-
-    # --- 高値突破 ---
-    if "高値突破" in signals:
-        phrases.append("直近高値をブレイクし、トレンド継続の可能性があります。")
-        score += 2
-
-    # --- ボックス・三角 ---
-    if "ボックス相場" in signals:
-        phrases.append("ボックス相場内の動きが続いており、レンジの上限や下限に注目が集まります。")
-        score += 0.5
-    if "三角保ち合い" in signals:
-        phrases.append("三角保ち合いの形状を見せており、近いうちにブレイクする可能性があります。")
-        score += 0.5
-
-    # --- ADXの文脈評価 ---
-    if adx_value is not None:
-        if adx_value >= 40:
-            if "MACD" in signals or "5MA>25MA" in signals:
-                phrases.append("トレンドが非常に強く、買い圧力が継続しています。")
-                score += 2
-            else:
-                warnings.append("ADXが高く、トレンドは強いですが新たな買いサインは限定的です。")
-                score += 0.5
-        elif adx_value >= 25:
-            if "MACD" in signals or "5MA>25MA" in signals:
-                phrases.append("中程度のトレンドに加え、テクニカル指標も好転しています。")
-                score += 1.5
-            else:
-                warnings.append("ADXはやや高めですが、他のシグナルとの連動は弱めです。")
-                score += 0.5
-
-    # --- 乖離率の扱い ---
-    for s in signals:
-        if "乖離率" in s:
-            try:
-                val = float(s.replace("乖離率", "").replace("%", ""))
-                if abs(val) >= 10:
-                    warnings.append(f"{s} に達しており、過熱感があります。")
-                    score += 0.5
-                else:
-                    phrases.append(f"{s} の状態です。")
-                    score += 0.5
-            except:
-                continue
-
-    # --- 出力処理 ---
-    if not phrases and not warnings:
-        return "明確な買いサインは見られません。", 0
-
-    final_comment = " ".join(phrases)
-    if warnings:
-        final_comment += " " + " ".join(warnings)
-
-    return final_comment, round(score, 1)
-
-def analyze_stock(hist):
-    signals = []
-    trend = "不明"
-
-    close = hist["Close"]
-    ma5 = close.rolling(window=5).mean()
-    ma25 = close.rolling(window=25).mean()
-    ema12 = close.ewm(span=12).mean()
-    ema26 = close.ewm(span=26).mean()
-    macd = ema12 - ema26
-    signal_line = macd.ewm(span=9).mean()
-
-    delta = close.diff()
-    up = delta.clip(lower=0)
-    down = -delta.clip(upper=0)
-    avg_gain = up.rolling(window=14).mean()
-    avg_loss = down.rolling(window=14).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-
-    vol_ma5 = hist["Volume"].rolling(window=5).mean()
-    max_high = close.rolling(window=20).max()
-
-    high = close + 1.0
-    low = close - 1.0
-    plus_dm = high.diff()
-    minus_dm = low.diff().abs()
-    tr = pd.concat([
-        high - low,
-        (high - close.shift()).abs(),
-        (low - close.shift()).abs()
-    ], axis=1).max(axis=1)
-    atr = tr.rolling(window=14).mean()
-    plus_di = 100 * (plus_dm.rolling(window=14).mean() / atr)
-    minus_di = 100 * (minus_dm.rolling(window=14).mean() / atr)
-    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-    adx = dx.rolling(window=14).mean()
-
-    range20 = close.rolling(window=20).max() - close.rolling(window=20).min()
-    range_std = range20.rolling(window=5).std()
-
-    # === シグナル抽出 ===
-    if macd.iloc[-2] < signal_line.iloc[-2] and macd.iloc[-1] > signal_line.iloc[-1] and macd.iloc[-1] > 0:
-        signals.append("MACD")
-    if ma5.iloc[-2] < ma25.iloc[-2] and ma5.iloc[-1] > ma25.iloc[-1] and close.iloc[-1] > ma25.iloc[-1]:
-        signals.append("5MA>25MA")
-    if rsi.iloc[-2] < 30 and rsi.iloc[-1] > 30 and rsi.iloc[-1] > rsi.iloc[-2] + 5:
-        signals.append("RSI反発")
-    if hist["Volume"].iloc[-1] > 1.5 * vol_ma5.iloc[-1] and hist["Volume"].iloc[-1] > hist["Volume"].iloc[-2]:
-        signals.append("出来高↑")
-    if close.iloc[-1] > max_high.iloc[-2] * 1.01:
-        signals.append("高値突破")
-
-    disparity = ((close.iloc[-1] - ma25.iloc[-1]) / ma25.iloc[-1]) * 100
-    if abs(disparity) > 5:
-        signals.append(f"乖離率{disparity:+.1f}%")
-    if adx.iloc[-1] >= 40:
-        signals.append("ADX強↑")
-    elif adx.iloc[-1] >= 25:
-        signals.append("ADX中↑")
-    if range_std.iloc[-1] < 1.0:
-        signals.append("ボックス相場")
-    if range_std.iloc[-1] < 0.5 and not range_std.iloc[-2] < 0.5:
-        signals.append("三角保ち合い")
-
-    # === トレンド分類 ===
-    adx_last = adx.iloc[-1] if not adx.empty else None
-    if adx_last is not None:
-        if adx_last < 20:
-            trend = "横ばい"
-        elif ("MACD" in signals or "5MA>25MA" in signals) and adx_last >= 25:
-            trend = "上昇"
-        else:
-            trend = "不明"
-
-    # ★ここで最新値を取得
-    rsi_last = rsi.iloc[-1] if not rsi.empty else None
-    # disparityはすでに計算済み
-
-    score, overbought = calc_score(signals, adx_last, rsi_last, disparity)
-    return signals, adx_last, trend, score, rsi_last, disparity, overbought
-
-# スコア判定処理
-
-def calc_score(signals, adx_value, rsi_value=None, disparity_value=None):
-    score = 0.0
-    # 既存の加点ロジック
+        phrases.append("RSIが反発し、反転上昇の兆しがあります。")
     if "出来高↑" in signals:
-        score += 1.0
-    if "高値突破" in signals:
-        score += 1.5
-    has_disparity = any(
-        "乖離率" in s and float(s.replace("乖離率", "").replace("%", "").replace("+", "")) >= 10
-        for s in signals
-    )
-    if has_disparity:
-        score += 1.0
+        phrases.append("出来高が急増しており注目が集まっています。")
+    if "直近高値突破" in signals:
+        phrases.append("直近の高値をブレイクし、トレンド継続が期待されます。")
+    if "三連続陽線" in signals:
+        phrases.append("3日連続の陽線が続いており、強い上昇圧力が確認できます。")
+    if "三空踏み上げ" in signals:
+        phrases.append("三空踏み上げが出現しており、強い買い相場の継続が示唆されます。")
+
+    # ===== 売り・注意シグナルコメント =====
+    if "MACD陰転" in signals:
+        warnings.append("MACDが陰転し、下落転換の兆しがあります。")
+    if "短期デッドクロス" in signals:
+        warnings.append("短期デッドクロスが発生し、下落リスクに注意が必要です。")
+    if "RSI過熱反転" in signals:
+        warnings.append("RSIが過熱圏から反転しており、利確や調整のタイミングかもしれません。")
+    if "高値反落" in signals:
+        warnings.append("高値更新に失敗しており、反落の可能性があります。")
+    if "三空踏み上げ" in signals:
+        warnings.append("ただし三空踏み上げは過熱の兆候ともされ、押し目や反落には警戒が必要です。")
+
+    # ===== トレンド強度（ADX）コメント =====
     if adx_value is not None:
         if adx_value >= 40:
-            score += 1.5
+            phrases.append("トレンドは非常に強く、流れに乗る戦略が有効です。")
         elif adx_value >= 25:
-            score += 1.0
+            phrases.append("中程度のトレンドが継続しています。")
 
-    # --- 過熱感による減点 ---
-    overbought = False
-    if rsi_value is not None and rsi_value >= 70:
-        score -= 1.0
-        overbought = True
-    if disparity_value is not None and abs(disparity_value) >= 10:
-        score -= 1.0
-        overbought = True
+    # ===== コメント文生成 =====
+    final_comment = " ".join(phrases + warnings)
+    return final_comment
 
-    return max(score, 0), overbought  # スコアは0未満にならないように
-
-def judge_action_by_score(score):
+def judge_action_by_comment(comment: str) -> str:
     """
-    スコアに応じてアクションを返す（3分類）
-    0～1   ：「静観（エントリー非推奨）」
-    2～3   ：「中立（慎重に検討）」
-    4～5   ：「積極検討（買い目線強）」
+    コメント内容から、Action列（買い/中立/売り）を判定する
     """
-    if 4.0 <= score <= 5.0:
-        return "積極検討（買い目線強）"
-    elif 2.0 <= score < 4.0:
-        return "中立（慎重に検討）"
-    elif 0.0 <= score < 2.0:
-        return "静観（エントリー非推奨）"
+    buy_keywords = ["買い", "反発", "上昇", "ブレイク", "陽線", "注目"]
+    sell_keywords = ["デッドクロス", "陰転", "下落", "過熱", "反落", "利確", "警戒"]
+
+    comment_lower = comment.lower()
+
+    buy_score = sum(1 for k in buy_keywords if k in comment)
+    sell_score = sum(1 for k in sell_keywords if k in comment)
+
+    if buy_score > 1 and sell_score == 0:
+        return "買い（エントリー検討）"
+    elif sell_score > 1 and buy_score == 0:
+        return "売り（利確/調整）"
     else:
-        return "スコア異常"
+        return "中立（様子見）"
 
-def analyze_trend_and_score(signals, adx_value):
-    score = calc_score(signals, adx_value)
-    # トレンド判定
-    if 4.0 <= score <= 5.0:
-        trend_label = "上昇トレンド"
-    elif 2.0 <= score < 4.0:
-        trend_label = "やや上昇傾向"
-    elif 0.0 <= score < 2.0:
-        trend_label = "横ばい〜警戒"
-    else:
-        trend_label = "トレンド不明"
-    score_str = f"{round(score, 1)}/5.0"
-    mark = "◯" if 4.0 <= score <= 5.0 else "✕"
-    return trend_label, score_str, mark
-
-def analyze_and_judge(hist, stock_name=""):
-    signals, adx_last, trend, trend_score = analyze_stock(hist)
-    score = calc_score(signals, adx_last)
-    comment = format_signals_to_comment(signals,
-                                        close=hist["Close"].iloc[-1],
-                                        ma25=hist["Close"].rolling(window=25).mean().iloc[-1],
-                                        adx_value=adx_last)[0]
-    action = judge_action_by_score(score)
-    print(f"【{stock_name}】")
-    print(f"シグナル: {signals}")
-    print(f"スコア: {score}/5.0")
-    print(f"推奨アクション: {action}")
-    print(f"コメント: {comment}")
-    print("-" * 40)
-    return {
-        "stock": stock_name,
-        "signals": signals,
-        "score": score,
-        "action": action,
-        "comment": comment
-    }
-
-import numpy as np
-
-def symbol_to_num(symbol):
-    # .Tを除去し、数値部分のみ抽出
-    s = str(symbol).replace('.T', '')
-    try:
-        return int(float(s))
-    except ValueError:
-        return np.nan  # 数値化できない場合はNaN
-
-def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, folder_id_backup):
+def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, folder_id_backup, creds):
+    sheet_process_logs = []
     global SAVE_PATH
-    global sheet_process_logs
     today_str, timestamp_str = get_today_str()
     spreadsheet = gc.open(spreadsheet_name)
     sheet_list = spreadsheet.worksheets()
 
-    all_dfs = []  # ← ここでリストを初期化
+    all_dfs = []  # 各シートのDFを格納
 
     for worksheet in sheet_list:
-        start_time_sheet = time.time()  # ← ここで測定開始
+        start_time_sheet = time.time()
         sheet_name = worksheet.title
-        print(f"🔍 処理中: {sheet_name}")
+        print(f"\U0001f50d 処理中: {sheet_name}")
         df = get_as_dataframe(worksheet, evaluate_formulas=True)
 
         if "Symbol" not in df.columns:
             print(f"⚠️ {sheet_name} にSymbol列がありません。スキップします。")
             continue
 
-        # 列の初期化処理
-        for col in ["Name", "Time", "Price", "TrendScore", "Sign", "MultiSign", "Action"]:
+        for col in ["Name", "Time", "Price", "Sign", "MultiSign", "Action", "注目度"]:
             if col not in df.columns:
                 df[col] = pd.Series([""] * len(df), dtype="object")
             else:
@@ -389,76 +398,59 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
         df["Time"] = df["Time"].astype(str)
 
         for i, row in df.iterrows():
+            if i % 100 == 0:
+                print(f"   🔄 {i+1}件目を処理中...")
             raw_symbol = None
             try:
-                # シンボル前処理
                 raw_symbol = str(row["Symbol"]).strip().replace("$", "").replace(".T", "")
-                if "." in raw_symbol: raw_symbol = raw_symbol.split(".")[0]
+                if "." in raw_symbol:
+                    raw_symbol = raw_symbol.split(".")[0]
                 code = raw_symbol.zfill(4)
                 ticker = f"{code}.T"
 
-                # 株価データ取得
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="3mo")
                 if hist.empty or len(hist) < 30:
                     print(f"⚠️ データ不足: {ticker} - ヒストリカルデータ{len(hist)}件")
                     continue
 
-                # 基本情報更新
                 df.at[i, "Price"] = round(hist["Close"].iloc[-1], 2)
                 if pd.isnull(row["Name"]) or row["Name"] == "":
                     df.at[i, "Name"] = stock.info.get("shortName", "")
 
-                # 分析処理
-                signals, adx_last, trend, score, rsi_last, disparity, overbought = analyze_stock(hist)
+                signals, adx_last, trend, rsi_last, disparity, attention_flag = analyze_stock(hist)
                 df.at[i, "Sign"] = "✅ " + ", ".join(signals) if signals else ""
-
-                # コメント生成
-                comment, _ = format_signals_to_comment(
-                    signals,
-                    close=hist["Close"].iloc[-1],
-                    ma25=hist["Close"].rolling(25).mean().iloc[-1],
-                    adx_value=adx_last  # ← adx_lastを使用
-                )
+                comment = format_signals_to_comment(signals, adx_last)
                 df.at[i, "MultiSign"] = comment
+                df.at[i, "Action"] = judge_action_by_comment(comment)
                 df.at[i, "Time"] = timestamp_str
-
-                # スコア計算とアクション判定
-                score, overbought = calc_score(signals, adx_last, rsi_last, disparity)
-                df.at[i, "TrendScore"] = round(score, 1)
-
-                action = judge_action_by_score(score)
-                if overbought and action == "積極検討（買い目線強）":
-                    action = "中立（過熱感警戒）"
-                df.at[i, "Action"] = action
+                df.at[i, "注目度"] = attention_flag
 
             except Exception as e:
                 print(f"⚠️ エラー: {raw_symbol or '不明'} - {e}")
 
-        # データ整形
-        df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "TrendScore", "Sign", "MultiSign"])
-        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "TrendScore", "Sign", "MultiSign"])
-        df["Symbol"] = df["Symbol"].astype(str).str.replace(r"\.T$", "", regex=True) + ".T"
+        # Symbol列を正規化する
+        df = normalize_symbol_column(df)
 
-        all_dfs.append(df.copy())  # ← データ整形後に追加
+        df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "注目度", "Action", "Sign", "MultiSign"])
+        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "注目度", "Action", "Sign", "MultiSign"])
 
-        # スプレッドシート更新
+        all_dfs.append(df.copy())
+
+        df.drop(columns=[col for col in ["TrendScore", "TrendScore_raw"] if col in df.columns], inplace=True)
         worksheet.clear()
-        set_with_dataframe(worksheet, df.fillna(""))
+        set_with_dataframe(worksheet, df.fillna("").infer_objects(copy=False))
 
-        # バックアップ作成
         new_sheet_title = f"Watchlist_{sheet_name}_{today_str}"
         try:
             delete_existing_file_by_name(drive_service, folder_id_backup, new_sheet_title)
             new_spreadsheet = gc.create(new_sheet_title, folder_id_backup)
-
-            set_with_dataframe(new_spreadsheet.sheet1, df.fillna(""))
+            set_with_dataframe(new_spreadsheet.sheet1, df.fillna("").infer_objects(copy=False))
             print(f"✅ 完了: {new_sheet_title}")
         except Exception as e:
             print(f"❌ 作成失敗: {new_sheet_title} - {e}")
 
-        # 🔄 各シート処理ログの記録（シートループの最後に追加）
-        elapsed_sheet = time.time() - start_time_sheet  # ※ シート処理の最初で start_time_sheet = time.time() を定義しておく
+        elapsed_sheet = time.time() - start_time_sheet
         sheet_process_logs.append({
             "sheet_name": sheet_name,
             "count": len(df),
@@ -466,35 +458,59 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
             "failures": [row["Symbol"] for i, row in df.iterrows() if "エラー" in str(row["MultiSign"]) or "取得失敗" in str(row["Name"])]
         })
 
-    # --- 追加処理ここから ---
-    if all_dfs:
-        all_df = pd.concat(all_dfs, ignore_index=True)
-        # 数値変換処理を厳密化
-        filtered = all_df[pd.to_numeric(all_df["TrendScore"], errors="coerce").ge(3)].copy()
-        filtered["SymbolNum"] = filtered["Symbol"].apply(symbol_to_num)
-        filtered = filtered.sort_values("SymbolNum", na_position='last').drop("SymbolNum", axis=1)
+    # ✅ 条件一致銘柄の統合と出力
+    try:
+        combined_df = pd.concat(all_dfs, ignore_index=True)
 
-        new_sheet_title = f"watchlist_signal_{today_str}"
-        try:
-            delete_existing_file_by_name(drive_service, folder_id_main, new_sheet_title)
-            new_spreadsheet = gc.create(new_sheet_title, folder_id_main)
-            set_with_dataframe(new_spreadsheet.sheet1, filtered.fillna(""))
-            print(f"✅ 完了: {new_sheet_title}")
-        except Exception as e:
-            print(f"❌ 作成失敗: {new_sheet_title} - {e}")
-    else:
-        print("⚠️ 有効なデータが1件もありませんでした。watchlist_signalファイルは作成されません。")
-    # --- 追加処理ここまで ---
+        # ✅ Signal数をカウント
+        combined_df["SignalCount"] = combined_df["Sign"].apply(
+            lambda x: x.count(",") + 1 if isinstance(x, str) and x.startswith("✅") else 0
+        )
 
-    # 全処理終了後（print("🎉 ...")の前）に追加
+        # ✅ 条件一致: Actionまたは注目度 + Signalが3個以上
+        condition = (
+            ((combined_df["Action"] == "買い（エントリー検討）") | (combined_df["注目度"] == "★★★"))
+            & (combined_df["SignalCount"] >= 3)
+        )
+        filtered_df = combined_df[condition].copy()
+        filtered_df.drop(columns=["SignalCount"], inplace=True)
+
+        # ✅ ソートと出力処理
+        filtered_df["SortKey"] = filtered_df["Symbol"].apply(symbol_to_num)
+        filtered_df.sort_values("SortKey", inplace=True)
+        filtered_df.drop(columns=["SortKey"], inplace=True)
+
+        summary_title = f"watchlist_signal_{today_str}"
+        delete_existing_file_by_name(drive_service, folder_id_main, summary_title)
+        summary_sheet_id = create_spreadsheet_in_folder(summary_title, folder_id_main, creds)
+        summary_sheet = gc.open_by_key(summary_sheet_id)
+        set_with_dataframe(summary_sheet.sheet1, filtered_df.fillna("").infer_objects(copy=False))
+
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{summary_sheet_id}/edit"
+        print(f"📤 条件一致シグナル出力完了: {summary_title}")
+        print(f"🔗 出力先URL: {sheet_url}")
+
+    except Exception as e:
+        print(f"⚠️ 条件一致の出力失敗: {e}")
+
+    # === デバッグ出力 ===
     print("\n🔬 デバッグ情報:")
     print(f"全シート数: {len(sheet_list)}")
     print(f"処理済みシート数: {len(all_dfs)}")
-    print(f"全データ件数: {len(all_df) if all_dfs else 0}")
-    print(f"フィルタ後件数: {len(filtered) if all_dfs else 0}")
+    print(f"全データ件数: {len(combined_df)}")
+    print(f"フィルタ後件数: {len(filtered_df)}")
     print(f"📁 保存先フォルダID（main）: {folder_id_main}")
-
     print("🎉 すべての処理が完了しました")
+
+def create_spreadsheet_in_folder(title, folder_id, creds):
+    drive_service = build("drive", "v3", credentials=creds)
+    file_metadata = {
+        "name": title,
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": [folder_id]
+    }
+    file = drive_service.files().create(body=file_metadata, fields="id").execute()
+    return file["id"]
 
 
 # ================================
@@ -503,8 +519,8 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
 
 def main():
     # あなたのDrive上の目的フォルダIDに差し替えてください
-    FOLDER_ID_MAIN = "1dFuJfNLSJ7tw43Ac9RKAqJ0yW49cLsIe"       # ColabNotebooks/銘柄分析/Signal
-    FOLDER_ID_BACKUP = "1hN6fzMeT1ZB7I0jVRc9L_8HKIqI0Gi_W"     # ColabNotebooks/銘柄分析/Signal/backup
+    FOLDER_ID_MAIN = "1dFuJfNLSJ7tw43Ac9RKAqJ0yW49cLsIe"       # ColabNotebooks/銘柄分析/Watchlist
+    FOLDER_ID_BACKUP = "1hN6fzMeT1ZB7I0jVRc9L_8HKIqI0Gi_W"     # ColabNotebooks/銘柄分析/Watchlist/backup
 
     spreadsheet_name = "watchlist"
     mount_drive()
@@ -522,7 +538,7 @@ def main():
         drive_service = build("drive", "v3", credentials=creds)
 
         # 📌 フォルダIDをそのまま渡す（get_drive_folder_id_by_path を使わない）
-        process_all_sheets(spreadsheet_name, gc, drive_service, FOLDER_ID_MAIN, FOLDER_ID_BACKUP)
+        process_all_sheets(spreadsheet_name, gc, drive_service, FOLDER_ID_MAIN, FOLDER_ID_BACKUP, creds)
 
     except Exception as e:
         print(f"❌ 重大エラー: {e}")
