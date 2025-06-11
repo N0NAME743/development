@@ -4,22 +4,27 @@
 
 !pip install --upgrade gspread gspread_dataframe google-auth yfinance --quiet
 
+import os
 import pandas as pd
 import yfinance as yf
 import gspread
 from google.colab import auth
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaInMemoryUpload
 from google.auth.transport.requests import Request
 from datetime import datetime, timezone, timedelta
 import google.auth
 from google.colab import drive
+import time
+from collections import defaultdict
 
 # ================================
 # Sec2｜定義・関数
 # ================================
 
-SAVE_PATH = "/content/drive/ColabNotebooks/銘柄分析/signal/backup"  # 🔧 ここを変更すれば保存先のフォルダパスを変更できます
+SAVE_PATH = "drive/MyDrive/ColabNotebooks/銘柄分析/signal"  # 🔧 保存先のパスを正しく設定
+BACKUP_SUBFOLDER = "backup"  # 🔧 バックアップはこのサブフォルダに
 
 # GoogleDrive関数
 def mount_drive():
@@ -28,7 +33,7 @@ def mount_drive():
 def authenticate_services():
     auth.authenticate_user()
     creds, _ = google.auth.default()
-    return creds, gspread.authorize(creds)
+    return creds, gspread.authorize(creds), creds
 
 def get_drive_folder_id_by_path(path, creds):
     service = build('drive', 'v3', credentials=creds)
@@ -51,12 +56,21 @@ def get_drive_folder_id_by_path(path, creds):
     return parent_id, service
 
 def delete_existing_file_by_name(drive_service, folder_id, file_name):
-    # backupフォルダ内で同名ファイルを検索して削除
     query = f"'{folder_id}' in parents and name = '{file_name}' and mimeType = 'application/vnd.google-apps.spreadsheet'"
     results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     files = results.get('files', [])
     for file in files:
         drive_service.files().delete(fileId=file['id']).execute()
+
+def create_spreadsheet_in_folder(title, folder_id, creds):
+    drive_service = build("drive", "v3", credentials=creds)
+    file_metadata = {
+        "name": title,
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": [folder_id]
+    }
+    file = drive_service.files().create(body=file_metadata, fields="id").execute()
+    return file["id"]
 
 # 日付の取得
 def get_today_str():
@@ -317,9 +331,9 @@ def analyze_trend_and_score(signals, adx_value):
 def analyze_and_judge(hist, stock_name=""):
     signals, adx_last, trend, trend_score = analyze_stock(hist)
     score = calc_score(signals, adx_last)
-    comment = format_signals_to_comment(signals, 
-                                        close=hist["Close"].iloc[-1], 
-                                        ma25=hist["Close"].rolling(window=25).mean().iloc[-1], 
+    comment = format_signals_to_comment(signals,
+                                        close=hist["Close"].iloc[-1],
+                                        ma25=hist["Close"].rolling(window=25).mean().iloc[-1],
                                         adx_value=adx_last)[0]
     action = judge_action_by_score(score)
     print(f"【{stock_name}】")
@@ -346,22 +360,17 @@ def symbol_to_num(symbol):
     except ValueError:
         return np.nan  # 数値化できない場合はNaN
 
-
-# ================================
-# ✅ メイン処理関数
-# ================================
-
-def process_all_sheets(spreadsheet_name, save_path):
+def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, folder_id_backup):
     global SAVE_PATH
+    global sheet_process_logs
     today_str, timestamp_str = get_today_str()
-    creds, gc = authenticate_services()
     spreadsheet = gc.open(spreadsheet_name)
     sheet_list = spreadsheet.worksheets()
-    folder_id, drive_service = get_drive_folder_id_by_path(SAVE_PATH, creds)
 
     all_dfs = []  # ← ここでリストを初期化
 
     for worksheet in sheet_list:
+        start_time_sheet = time.time()  # ← ここで測定開始
         sheet_name = worksheet.title
         print(f"🔍 処理中: {sheet_name}")
         df = get_as_dataframe(worksheet, evaluate_formulas=True)
@@ -387,7 +396,7 @@ def process_all_sheets(spreadsheet_name, save_path):
                 if "." in raw_symbol: raw_symbol = raw_symbol.split(".")[0]
                 code = raw_symbol.zfill(4)
                 ticker = f"{code}.T"
-                
+
                 # 株価データ取得
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="3mo")
@@ -403,7 +412,7 @@ def process_all_sheets(spreadsheet_name, save_path):
                 # 分析処理
                 signals, adx_last, trend, score, rsi_last, disparity, overbought = analyze_stock(hist)
                 df.at[i, "Sign"] = "✅ " + ", ".join(signals) if signals else ""
-                
+
                 # コメント生成
                 comment, _ = format_signals_to_comment(
                     signals,
@@ -413,11 +422,11 @@ def process_all_sheets(spreadsheet_name, save_path):
                 )
                 df.at[i, "MultiSign"] = comment
                 df.at[i, "Time"] = timestamp_str
-                
+
                 # スコア計算とアクション判定
                 score, overbought = calc_score(signals, adx_last, rsi_last, disparity)
                 df.at[i, "TrendScore"] = round(score, 1)
-                
+
                 action = judge_action_by_score(score)
                 if overbought and action == "積極検討（買い目線強）":
                     action = "中立（過熱感警戒）"
@@ -436,16 +445,26 @@ def process_all_sheets(spreadsheet_name, save_path):
         # スプレッドシート更新
         worksheet.clear()
         set_with_dataframe(worksheet, df.fillna(""))
-        
+
         # バックアップ作成
         new_sheet_title = f"Watchlist_{sheet_name}_{today_str}"
         try:
-            delete_existing_file_by_name(drive_service, folder_id, new_sheet_title)
-            new_spreadsheet = gc.create(new_sheet_title, folder_id)
+            delete_existing_file_by_name(drive_service, folder_id_backup, new_sheet_title)
+            new_spreadsheet = gc.create(new_sheet_title, folder_id_backup)
+
             set_with_dataframe(new_spreadsheet.sheet1, df.fillna(""))
             print(f"✅ 完了: {new_sheet_title}")
         except Exception as e:
             print(f"❌ 作成失敗: {new_sheet_title} - {e}")
+
+        # 🔄 各シート処理ログの記録（シートループの最後に追加）
+        elapsed_sheet = time.time() - start_time_sheet  # ※ シート処理の最初で start_time_sheet = time.time() を定義しておく
+        sheet_process_logs.append({
+            "sheet_name": sheet_name,
+            "count": len(df),
+            "elapsed": elapsed_sheet,
+            "failures": [row["Symbol"] for i, row in df.iterrows() if "エラー" in str(row["MultiSign"]) or "取得失敗" in str(row["Name"])]
+        })
 
     # --- 追加処理ここから ---
     if all_dfs:
@@ -457,8 +476,8 @@ def process_all_sheets(spreadsheet_name, save_path):
 
         new_sheet_title = f"watchlist_signal_{today_str}"
         try:
-            delete_existing_file_by_name(drive_service, folder_id, new_sheet_title)
-            new_spreadsheet = gc.create(new_sheet_title, folder_id)
+            delete_existing_file_by_name(drive_service, folder_id_main, new_sheet_title)
+            new_spreadsheet = gc.create(new_sheet_title, folder_id_main)
             set_with_dataframe(new_spreadsheet.sheet1, filtered.fillna(""))
             print(f"✅ 完了: {new_sheet_title}")
         except Exception as e:
@@ -473,13 +492,64 @@ def process_all_sheets(spreadsheet_name, save_path):
     print(f"処理済みシート数: {len(all_dfs)}")
     print(f"全データ件数: {len(all_df) if all_dfs else 0}")
     print(f"フィルタ後件数: {len(filtered) if all_dfs else 0}")
+    print(f"📁 保存先フォルダID（main）: {folder_id_main}")
 
     print("🎉 すべての処理が完了しました")
 
-def main():
-    spreadsheet_name = "watchlist"
-    SAVE_PATH = "MyDrive/ColabNotebooks/銘柄分析/signal/backup"
-    mount_drive()
-    process_all_sheets(spreadsheet_name, SAVE_PATH)
 
-main()
+# ================================
+# ✅ メイン処理関数
+# ================================
+
+def main():
+    # あなたのDrive上の目的フォルダIDに差し替えてください
+    FOLDER_ID_MAIN = "1dFuJfNLSJ7tw43Ac9RKAqJ0yW49cLsIe"       # ColabNotebooks/銘柄分析/Signal
+    FOLDER_ID_BACKUP = "1hN6fzMeT1ZB7I0jVRc9L_8HKIqI0Gi_W"     # ColabNotebooks/銘柄分析/Signal/backup
+
+    spreadsheet_name = "watchlist"
+    mount_drive()
+
+    start_time = time.time()
+    print("🚀 処理開始")
+
+    global sheet_process_logs
+    sheet_process_logs = []  # ← ログ初期化
+
+    try:
+        _, gc, creds = authenticate_services()
+
+        # Google Drive APIのサービスオブジェクト
+        drive_service = build("drive", "v3", credentials=creds)
+
+        # 📌 フォルダIDをそのまま渡す（get_drive_folder_id_by_path を使わない）
+        process_all_sheets(spreadsheet_name, gc, drive_service, FOLDER_ID_MAIN, FOLDER_ID_BACKUP)
+
+    except Exception as e:
+        print(f"❌ 重大エラー: {e}")
+        return
+
+    elapsed = time.time() - start_time
+    print("✅ 全処理完了！")
+    print(f"⏱️ 所要時間: {elapsed:.1f} 秒")
+
+    # 各シート単位のログ出力（省略せず出す）
+    if sheet_process_logs:
+        print("\n📊 シートごとの処理概要:")
+        for log in sheet_process_logs:
+            print(f"\n📄 シート: {log['sheet_name']}")
+            print(f" - 件数: {log['count']} 行")
+            print(f" - 処理時間: {log['elapsed']:.1f} 秒")
+            if log['failures']:
+                print(f" - ⚠️ 失敗銘柄: {len(log['failures'])} 件")
+                from collections import defaultdict
+                grouped = defaultdict(list)
+                for code in log['failures']:
+                    try:
+                        prefix = int(code) // 1000 * 1000
+                        grouped[f"{prefix}番台"].append(code)
+                    except:
+                        grouped["不明"].append(code)
+                for group in sorted(grouped.keys()):
+                    print(f"   ・{group}: [{', '.join(grouped[group])}]")
+            else:
+                print(" - 🎉 全銘柄正常に取得")
