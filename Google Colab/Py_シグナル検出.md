@@ -1,3 +1,4 @@
+
 #追加内容
 ##仕手株と思われる銘柄の警戒機能#
 ##高値突破判定	「直近60日高値」＋「期間内の高値を本当に超えたときのみ」判定
@@ -289,7 +290,8 @@ def analyze_signals(signals, adx_value=None):
         attention = "ー"
 
     summary = get_summary_by_attention(attention)
-    full_comment = "".join(comments + [summary])
+    #full_comment = "".join(comments + [summary])
+    full_comment = "\n".join(comments + [summary]) #➡ 総評改行あり版
     #score_str = f"{total_score:.1f} / 10.0"
     score_str = f"{total_score:.1f} / {max(total_score, 10):.1f}"  # ←変更ここ
 
