@@ -1,10 +1,11 @@
 
-#追加内容
+#2025-06-14追加内容
 ##仕手株と思われる銘柄の警戒機能#
 ##高値突破判定	「直近60日高値」＋「期間内の高値を本当に超えたときのみ」判定
 ##急騰履歴検出	直近60日で+40%以上の変動のみ警告
 ##小型株判定	時価総額100億円未満のみに限定し、過剰検出を防止
 ##スコア加点シグナルの複数追加
+##Signをスプレッドシートに出力しないようにした
 
 # ================================
 # Sec1｜セットアップ
@@ -501,24 +502,21 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
             print(f"⚠️ {sheet_name} にSymbol列がありません。スキップします。")
             continue
 
-        # 修正：既存列の型を object に変更
         for col in ["Name", "Time", "Price", "Action", "注目度", "Score", "Sign", "MultiSign"]:
             if col not in df.columns:
                 df[col] = pd.Series([""] * len(df), dtype="object")
             else:
                 df[col] = df[col].astype("object")
-
         df["Time"] = df["Time"].astype(str)
 
-        # 🔁 ループ内
         total = len(df)
-        start_time_loop = time.time()  # 🔄 全体の開始時間
+        start_time_loop = time.time()
 
         for i, row in df.iterrows():
             if i % 100 == 0:
                 elapsed = time.time() - start_time_loop
-                avg_time_per_row = elapsed / (i + 1) if i > 0 else 0
-                remaining = avg_time_per_row * (total - i)
+                avg_time = elapsed / (i + 1) if i > 0 else 0
+                remaining = avg_time * (total - i)
                 print(f"   🔄 {i+1}件目を処理中... ⏱️ 経過: {elapsed:.1f}s｜残り予測: {remaining:.1f}s")
 
             raw_symbol = None
@@ -530,7 +528,7 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
                 ticker = f"{code}.T"
 
                 stock = yf.Ticker(ticker)
-                hist = stock.history(period="3mo")
+                hist = stock.history(period="6mo")  # ← 期間を少し拡大
                 if hist.empty or len(hist) < 30:
                     print(f"⚠️ データ不足: {ticker} - ヒストリカルデータ{len(hist)}件")
                     continue
@@ -539,9 +537,8 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
                 if pd.isnull(row["Name"]) or row["Name"] == "":
                     df.at[i, "Name"] = stock.info.get("shortName", "取得失敗")
 
-                # ✅ 統合版 analyze_stock 関数に対応
-                info = stock.info  # ← 追加
-                signals, attention, comment, action, score_str = analyze_stock(hist, info)  # ← 引数にinfoを追加
+                info = stock.info
+                signals, attention, comment, action, score_str = analyze_stock(hist, info)
 
                 df.at[i, "Sign"] = "✅ " + ", ".join(signals) if signals else ""
                 df.at[i, "MultiSign"] = comment
@@ -553,23 +550,24 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
             except Exception as e:
                 print(f"⚠️ エラー: {raw_symbol or '不明'} - {e}")
 
-        # Symbol列を正規化する
+        # 🔄 各行処理が終わった後に1回だけ追加
         df = normalize_symbol_column(df)
-
         df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "Score", "注目度", "Sign", "MultiSign"])
-        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price","Action", "Score","注目度", "Sign", "MultiSign"])
-
+        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "Score", "注目度", "Sign", "MultiSign"])
         all_dfs.append(df.copy())
 
+        output_df = df.drop(columns=["Sign"])
         df.drop(columns=[col for col in ["TrendScore", "TrendScore_raw"] if col in df.columns], inplace=True)
+
         worksheet.clear()
-        set_with_dataframe(worksheet, df.fillna("").infer_objects(copy=False))
+        #Sign列を表示する場合は、[output_]を削除
+        set_with_dataframe(worksheet, output_df.fillna("").infer_objects(copy=False)) 
 
         new_sheet_title = f"Watchlist_{sheet_name}_{today_str}"
         try:
             delete_existing_file_by_name(drive_service, folder_id_backup, new_sheet_title)
             new_spreadsheet = gc.create(new_sheet_title, folder_id_backup)
-            set_with_dataframe(new_spreadsheet.sheet1, df.fillna("").infer_objects(copy=False))
+            set_with_dataframe(new_spreadsheet.sheet1, output_df.fillna("").infer_objects(copy=False))
             print(f"✅ 完了: {new_sheet_title}")
         except Exception as e:
             print(f"❌ 作成失敗: {new_sheet_title} - {e}")
@@ -582,16 +580,13 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
             "failures": [row["Symbol"] for i, row in df.iterrows() if "エラー" in str(row["MultiSign"]) or "取得失敗" in str(row["Name"])]
         })
 
-    # ✅ 条件一致銘柄の統合と出力
+    # ✅ 条件一致の統合出力
     try:
         combined_df = pd.concat(all_dfs, ignore_index=True)
-
-        # ✅ Signal数をカウント
         combined_df["SignalCount"] = combined_df["Sign"].apply(
             lambda x: x.count(",") + 1 if isinstance(x, str) and x.startswith("✅") else 0
         )
 
-        # ✅ 条件一致: Actionまたは注目度 + Signalが3個以上 + スコア5.0以上
         condition = (
             ((combined_df["Action"] == "買い（エントリー検討）") | (combined_df["注目度"] == "★★★")) &
             (combined_df["SignalCount"] >= 3) &
@@ -600,7 +595,6 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
         filtered_df = combined_df[condition].copy()
         filtered_df.drop(columns=["SignalCount"], inplace=True)
 
-        # ✅ ソートと出力処理
         filtered_df["SortKey"] = filtered_df["Symbol"].apply(symbol_to_num)
         filtered_df.sort_values("SortKey", inplace=True)
         filtered_df.drop(columns=["SortKey"], inplace=True)
@@ -609,7 +603,9 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
         delete_existing_file_by_name(drive_service, folder_id_main, summary_title)
         summary_sheet_id = create_spreadsheet_in_folder(summary_title, folder_id_main, creds)
         summary_sheet = gc.open_by_key(summary_sheet_id)
-        set_with_dataframe(summary_sheet.sheet1, filtered_df.fillna("").infer_objects(copy=False))
+
+        filtered_output_df = filtered_df.drop(columns=["Sign"])
+        set_with_dataframe(summary_sheet.sheet1, filtered_output_df.fillna("").infer_objects(copy=False))
 
         sheet_url = f"https://docs.google.com/spreadsheets/d/{summary_sheet_id}/edit"
         print(f"📤 条件一致シグナル出力完了: {summary_title}")
@@ -618,15 +614,12 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
     except Exception as e:
         print(f"⚠️ 条件一致の出力失敗: {e}")
 
-    # === デバッグ出力 ===
     print("\n🔬 デバッグ情報:")
     print(f"全シート数: {len(sheet_list)}")
     print(f"処理済みシート数: {len(all_dfs)}")
     print(f"全データ件数: {len(combined_df)}")
     print(f"フィルタ後件数: {len(filtered_df)}")
     print(f"📁 保存先フォルダID（main）: {folder_id_main}")
-    print("🎉 すべての処理が完了しました")
-
     print("🎉 すべての処理が完了しました")
 
 def create_spreadsheet_in_folder(title, folder_id, creds):
