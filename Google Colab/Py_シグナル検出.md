@@ -1,11 +1,7 @@
 
-#2025-06-14追加内容
-##仕手株と思われる銘柄の警戒機能#
-##高値突破判定	「直近60日高値」＋「期間内の高値を本当に超えたときのみ」判定
-##急騰履歴検出	直近60日で+40%以上の変動のみ警告
-##小型株判定	時価総額100億円未満のみに限定し、過剰検出を防止
-##スコア加点シグナルの複数追加
-##Signをスプレッドシートに出力しないようにした
+#2025-06-15追加内容
+##売り目線シグナルを追加
+##スプレッドシートのスキップ機能を追加
 
 # ================================
 # Sec1｜セットアップ
@@ -216,6 +212,32 @@ LEVELS = {
         "score": 1
     }
 }
+LEVELS_SELL = {
+    "▼▼▼": {
+        "keywords": [
+            {"text": "MACD陰転", "comment": "MACDが陰転し、下落トレンド入りの兆しがあります。"},
+            {"text": "短期デッドクロス", "comment": "短期の移動平均線がデッドクロスを形成しています。"},
+            {"text": "上髭陰線", "comment": "上髭が長い陰線が出現し、上値の重さを示唆しています。"},
+            {"text": "陰の丸坊主", "comment": "陰の丸坊主が出現し、売り圧力が強まっている兆しです。"},
+        ],
+        "score": -3
+    },
+    "▼▼": {
+        "keywords": [
+            {"text": "RSI過熱", "comment": "RSIが高値圏にあり、過熱感が出ています。"},
+            {"text": "下落トレンド継続", "comment": "安値が切り下がる形となっており、下降トレンドが続いています。"},
+            {"text": "移動平均線下抜け", "comment": "重要な移動平均線を下回っており、下落警戒です。"},
+        ],
+        "score": -2
+    },
+    "▼": {
+        "keywords": [
+            {"text": "出来高減少", "comment": "出来高が減少しており、上昇の勢いが鈍っています。"},
+            {"text": "連続陰線", "comment": "連続した陰線が続いており、売り優勢です。"},
+        ],
+        "score": -1
+    }
+}
 
 def adjust_attention_by_warning(attention, comment):
     """
@@ -235,43 +257,43 @@ def adjust_attention_by_warning(attention, comment):
 
 import random
 
-def get_summary_by_attention(attention):
-    summaries = {
-        "★": [
-            "反転の兆しはあるものの、まだ明確なトレンドは形成されていません。",
-            "やや買い圧力が見え始めましたが、様子見が妥当な場面です。",
-            "初動の可能性もあるため、今後の展開に注視したい局面です。"
-        ],
-        "★★": [
-            "複数のテクニカル指標が好転しており、打診買いを検討する余地があります。",
-            "一定のトレンドシグナルが揃いはじめており、今後の上昇余地に注目です。",
-            "過熱感には注意が必要ですが、反転局面に入った可能性があります。"
-        ],
-        "★★★": [
-            "テクニカル的には買いサインが明確に揃っており、エントリーの好機と判断されます。",
-            "強いトレンドが発生しており、大相場入りの可能性すら示唆されています。",
-            "シグナルが複数一致し、買い勢力が優勢。仕込み時として有望です。"
-        ],
-        "ー": [
-            "今のところ明確なトレンドは確認されていません。"
-        ]
-    }
-    return "➡ 総評：" + random.choice(summaries.get(attention, summaries["ー"]))
+def get_summary_by_attention(attention, buy_count=0, sell_count=0):
+    if buy_count >= 2 and sell_count == 0:
+        return "➡ 総評：買いシグナルが優勢で、エントリーを検討できる場面です。"
+    elif sell_count >= 2 and buy_count == 0:
+        return "➡ 総評：下落シグナルが優勢で、利確や警戒が推奨される局面です。"
+    elif buy_count >= 2 and sell_count >= 2:
+        return "➡ 総評：買いと売りシグナルが拮抗しており、様子見が妥当です。"
+    elif attention in ["★★★", "★★"]:
+        return "➡ 総評：一定のテクニカル好転が見られますが、過熱感にも注意が必要です。"
+    elif attention == "★":
+        return "➡ 総評：反転の兆しはあるものの、判断は慎重に。"
+    else:
+        return "➡ 総評：今のところ明確なトレンドは確認されていません。"
 
 def analyze_signals(signals, adx_value=None):
     total_score = 0
+    buy_count = 0
+    sell_count = 0
     comments = []
 
     # 重複シグナルの除去
     if "出来高↑" in signals and "出来高急増" in signals:
         signals = [s for s in signals if s != "出来高↑"]
 
-    for level in LEVELS.values():
+    for level in list(LEVELS.values()) + list(LEVELS_SELL.values()):
         for item in level["keywords"]:
             if item["text"] in signals:
-                total_score += level["score"]
-                comments.append(f"✅ {item['comment']}")
+                score = level["score"]
+                total_score += score
+                if score > 0:
+                    buy_count += 1
+                    comments.append(f"✅ {item['comment']}")
+                else:
+                    sell_count += 1
+                    comments.append(f"⚠️ {item['comment']}")
 
+    # ADXの影響（トレンドの強さ）
     if adx_value:
         if adx_value >= 40:
             total_score += 1
@@ -279,8 +301,7 @@ def analyze_signals(signals, adx_value=None):
         elif adx_value >= 25:
             comments.append("☆現在は中程度のトレンドが発生しており、方向感が出始めています。")
 
-    # period_high 判定に High を含める処理を別途 analyze_stock 側で行う想定（この関数内には不要）
-
+    # 注目度の算出
     if total_score >= 6:
         attention = "★★★"
     elif total_score >= 3:
@@ -290,17 +311,26 @@ def analyze_signals(signals, adx_value=None):
     else:
         attention = "ー"
 
-    summary = get_summary_by_attention(attention)
-    #full_comment = "".join(comments + [summary])
-    full_comment = "\n".join(comments + [summary]) #➡ 総評改行あり版
-    #score_str = f"{total_score:.1f} / 10.0"
-    score_str = f"{total_score:.1f} / {max(total_score, 10):.1f}"  # ←変更ここ
+    # 総評コメント生成（buy/sellカウントに応じて変化）
+    summary = get_summary_by_attention(attention, buy_count, sell_count)
+    full_comment = "\n".join(comments + [summary])
+
+    score_str = f"{total_score:.1f} / {max(total_score, 10):.1f}"
 
     return attention, full_comment, total_score, score_str
 
 # コメント内容からアクション判定（注目度ベース＋警告補正あり）
 def judge_action_by_comment(comment, attention=None):
-    if attention in ["★★★", "★★☆"]:
+    buy_count = comment.count("✅")
+    sell_count = comment.count("⚠️")
+
+    if sell_count >= 2 and buy_count == 0:
+        return "売り（利確/警戒）"
+    elif buy_count >= 2 and sell_count == 0:
+        return "買い（エントリー検討）"
+    elif buy_count >= 2 and sell_count >= 2:
+        return "中立（シグナル拮抗）"
+    elif attention in ["★★★", "★★☆"]:
         return "買い（エントリー検討）"
     elif attention in ["★★", "★☆"]:
         return "買い（エントリー検討）"
@@ -406,6 +436,7 @@ def analyze_stock(df, info=None):
     signals = []
 
     # テクニカルシグナル
+    ##買い目線
     if df["MACD"].iloc[-2] < df["MACD_signal"].iloc[-2] and df["MACD"].iloc[-1] > df["MACD_signal"].iloc[-1]:
         signals.append("MACD陽転")
     if df["RSI"].iloc[-2] < 30 and df["RSI"].iloc[-1] > 30:
@@ -414,6 +445,16 @@ def analyze_stock(df, info=None):
         signals.append("出来高↑")
     if volume.iloc[-1] > volume.rolling(5).mean().iloc[-2] * 2.0:
         signals.append("出来高急増")
+    ##売り目線
+    # MACD陰転（すでにある）
+    if df["MACD"].iloc[-2] > df["MACD_signal"].iloc[-2] and df["MACD"].iloc[-1] < df["MACD_signal"].iloc[-1]:
+        signals.append("MACD陰転")
+    # RSI過熱（70超え）
+    if df["RSI"].iloc[-2] < 70 and df["RSI"].iloc[-1] > 70:
+        signals.append("RSI過熱")
+    # 移動平均線下抜け（新規追加可）
+    if df["Close"].iloc[-1] < df["Close"].rolling(window=25).mean().iloc[-1]:
+        signals.append("移動平均線下抜け")
 
     # 直近60営業日高値ブレイク
     recent_high = df["High"].iloc[-60:-1].max()
@@ -447,7 +488,7 @@ def analyze_stock(df, info=None):
 
     adx_last = df["ADX"].iloc[-1]
     attention, comment, score, score_str = analyze_signals(signals, adx_last)
-    
+
     # ⭐ 警戒コメントをもとに注目度を調整
     adjusted_attention = adjust_attention_by_warning(attention, comment)
     action = judge_action_by_comment(comment, adjusted_attention)
@@ -502,17 +543,25 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
             print(f"⚠️ {sheet_name} にSymbol列がありません。スキップします。")
             continue
 
-        for col in ["Name", "Time", "Price", "Action", "注目度", "Score", "Sign", "MultiSign"]:
+        for col in ["Name", "Time", "Price", "Action", "注目度", "Score", "Sign", "MultiSign", "仕手警戒"]:
             if col not in df.columns:
                 df[col] = pd.Series([""] * len(df), dtype="object")
             else:
                 df[col] = df[col].astype("object")
+
         df["Time"] = df["Time"].astype(str)
 
         total = len(df)
         start_time_loop = time.time()
 
+        skipped_count = 0  # ← 追加
+
         for i, row in df.iterrows():
+            val = str(row["Time"]).strip().lower()
+            if val != "" and val != "nan":
+                skipped_count += 1
+                continue                
+
             if i % 100 == 0:
                 elapsed = time.time() - start_time_loop
                 avg_time = elapsed / (i + 1) if i > 0 else 0
@@ -547,13 +596,35 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
                 df.at[i, "Score"] = score_str
                 df.at[i, "Time"] = timestamp_str
 
+                # 仕手警戒フラグ（文字表示）
+                risk_flags = []
+                if any("仕手" in s for s in signals):
+                    risk_flags.append("仕手履歴")
+                if any("超小型株" in s for s in signals):
+                    risk_flags.append("超小型株")
+                if any("信用倍率高" in s for s in signals):
+                    risk_flags.append("信用過熱")
+                # S高判定（前日比+30%以上の高値）
+                try:
+                    prev_close = hist["Close"].iloc[-2]
+                    today_high = hist["High"].iloc[-1]
+                    if today_high >= prev_close * 1.3:
+                        risk_flags.append("S高急騰🟢")  # ← 色付き代替表現
+                except Exception as e:
+                    print(f"⚠️ S高判定失敗: {ticker} - {e}")
+
+                df.at[i, "仕手警戒"] = "\n".join(risk_flags) if risk_flags else ""
+
             except Exception as e:
                 print(f"⚠️ エラー: {raw_symbol or '不明'} - {e}")
 
+        # 🔚 各シート処理後にスキップ件数を表示
+        print(f"🟡 スキップされた処理済み行: {skipped_count}件")
+
         # 🔄 各行処理が終わった後に1回だけ追加
         df = normalize_symbol_column(df)
-        df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "Score", "注目度", "Sign", "MultiSign"])
-        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "Score", "注目度", "Sign", "MultiSign"])
+        df = reorder_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "Score", "注目度", "仕手警戒", "Sign", "MultiSign"])
+        df = clean_dataframe_columns(df, ["Symbol", "Name", "Time", "Price", "Action", "Score", "注目度", "仕手警戒", "Sign", "MultiSign"])
         all_dfs.append(df.copy())
 
         output_df = df.drop(columns=["Sign"])
@@ -561,7 +632,7 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
 
         worksheet.clear()
         #Sign列を表示する場合は、[output_]を削除
-        set_with_dataframe(worksheet, output_df.fillna("").infer_objects(copy=False)) 
+        set_with_dataframe(worksheet, output_df.fillna("").infer_objects(copy=False))
 
         new_sheet_title = f"Watchlist_{sheet_name}_{today_str}"
         try:
@@ -592,6 +663,13 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
             (combined_df["SignalCount"] >= 3) &
             (combined_df["Score"].astype(str).str.extract(r"([\d\.]+)").astype(float)[0] >= 5.0)
         )
+        # 売り銘柄の抽出例
+        sell_condition = (
+            (combined_df["Action"] == "売り（利確/警戒）") &
+            (combined_df["Score"].astype(str).str.extract(r"([-]?\d+\.?\d*)").astype(float)[0] <= -2.0)
+        )
+        sell_df = combined_df[sell_condition].copy()
+
         filtered_df = combined_df[condition].copy()
         filtered_df.drop(columns=["SignalCount"], inplace=True)
 
@@ -621,16 +699,6 @@ def process_all_sheets(spreadsheet_name, gc, drive_service, folder_id_main, fold
     print(f"フィルタ後件数: {len(filtered_df)}")
     print(f"📁 保存先フォルダID（main）: {folder_id_main}")
     print("🎉 すべての処理が完了しました")
-
-def create_spreadsheet_in_folder(title, folder_id, creds):
-    drive_service = build("drive", "v3", credentials=creds)
-    file_metadata = {
-        "name": title,
-        "mimeType": "application/vnd.google-apps.spreadsheet",
-        "parents": [folder_id]
-    }
-    file = drive_service.files().create(body=file_metadata, fields="id").execute()
-    return file["id"]
 
 
 # ================================
