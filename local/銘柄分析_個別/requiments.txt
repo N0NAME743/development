@@ -1,0 +1,8 @@
+japanize-matplotlib
+matplotlib
+mplfinance
+openpyxl
+pandas
+ta
+tk
+yfinance
