@@ -1,4 +1,67 @@
 # ==============================
+# Sec｜Setup.py
+# ==============================
+
+"""
+初回実行時に必要なライブラリ：
+pip install -r requirements.txt
+または個別に以下を実行してください：
+
+pip install yfinance japanize-matplotlib mplfinance ta pandas matplotlib openpyxl
+"""
+
+print("📄 このファイルは実行されています:", __file__)
+
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+# ✅ グローバルフォント設定（日本語表示用）
+JP_FONT = "IPAexGothic"
+plt.rcParams['font.family'] = JP_FONT
+
+# ✅ Excelファイルパス
+EXCEL_PATH = "Symbols.xlsx"
+
+# ✅ 使用可能なIPAフォント確認（任意）
+for f in fm.fontManager.ttflist:
+    if 'IPAex' in f.name:
+        print("✅ 利用可能なIPAフォント:", f.name, f.fname)
+
+# ==============================
+# Sec｜stock_data.py
+# ==============================
+
+import pandas as pd
+import yfinance as yf
+from setup import EXCEL_PATH
+
+print("📄 このファイルは実行されています:", __file__)
+
+def get_symbols_from_excel():
+    try:
+        df = pd.read_excel(EXCEL_PATH)
+        df.columns = df.columns.str.strip().str.lower()
+        if "symbol" not in df.columns:
+            raise ValueError("❌ 'symbol'列が見つかりません")
+        return df["symbol"].dropna().tolist()
+    except Exception as e:
+        print(f"❌ Excel読み込み失敗: {e}")
+        return []
+
+def fetch_stock_data(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        name = ticker.info.get("shortName", symbol)
+        df = ticker.history(period="18mo", interval="1d")
+        if df.empty:
+            raise ValueError("データが空です")
+        df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"]).copy()
+        return df, name
+    except Exception as e:
+        print(f"❌ データ取得失敗: {symbol} - {e}")
+        return None, symbol
+
+# ==============================
 # Sec｜chart_config.py
 # ==============================
 
@@ -299,3 +362,29 @@ def plot_chart(df, symbol, name):
     save_path = f"chart_{symbol}.png"
     fig.savefig(save_path)
     print(f"📈 Saved with MA, S/R lines, and Ichimoku Cloud (filled): {save_path}")
+
+
+# ==============================
+# Sec｜main.py
+# ==============================
+
+import matplotlib.pyplot as plt
+from setup import JP_FONT
+from stock_data import get_symbols_from_excel, fetch_stock_data
+from chart_config import add_indicators, plot_chart
+
+print("📄 このファイルは実行されています:", __file__)
+
+plt.rcParams['font.family'] = JP_FONT
+
+def main():
+    symbols = get_symbols_from_excel()
+    for symbol in symbols:
+        df, name = fetch_stock_data(symbol)
+        if df is None:
+            continue
+        df = add_indicators(df)
+        plot_chart(df, symbol, name)
+
+if __name__ == "__main__":
+    main()
