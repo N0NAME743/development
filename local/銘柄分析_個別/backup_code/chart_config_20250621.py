@@ -296,6 +296,10 @@ def plot_chart(df, symbol, name):
         y_val = df_recent.loc[idx, "MACD"]
         macd_ax.plot(x_pos, y_val, marker='o', color='green', markersize=6, zorder=5)
 
+    #save_path = f"chart_{symbol}.png"
+    #fig.savefig(save_path)
+    #print(f"📈 Saved with MA, S/R lines, and Ichimoku Cloud (filled): {save_path}")
+
     import os
     from datetime import datetime
 
@@ -303,7 +307,7 @@ def plot_chart(df, symbol, name):
     today_str = datetime.now().strftime('%Y-%m-%d')
 
     # 📁 出力先ディレクトリ（例: chart/2385-モンスターラボ）
-    folder_name = f"output/{today_str}" #{symbol}-{name}
+    folder_name = f"chart/{today_str}" #{symbol}-{name}
     os.makedirs(folder_name, exist_ok=True)  # フォルダがなければ作成
 
     # 🖼 保存ファイル名（例: chart_2385_2025-06-21.png）
@@ -313,6 +317,4 @@ def plot_chart(df, symbol, name):
     # 💾 保存
     fig.savefig(save_path)
     print(f"📈 Saved with MA, S/R lines, and Ichimoku Cloud (filled): {save_path}")
-    plt.close(fig)  # ✅ メモリリーク防止
-
-    return save_path  # ✅ ← この行を追加！
+    plt.close(fig)  # ✅ 追加してメモリリーク回避
