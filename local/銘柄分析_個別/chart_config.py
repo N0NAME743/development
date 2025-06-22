@@ -35,14 +35,95 @@ def add_indicators(df):
     df["senkou2"] = ((df["High"].rolling(52).max() + df["Low"].rolling(52).min()) / 2).shift(26)
     return df
 
+def judge_dynamic_zones(latest):
+    """
+    RSIとADXに基づいて、押し目ゾーン（low〜high）と利確ゾーン（profit_target）を自動で決定する関数。
+    """
+    rsi = latest["RSI"]
+    adx = latest["ADX"]
+    ma25 = latest["MA25"]
+    ma75 = latest["MA75"]
+    close = latest["Close"]
+
+    # ✅ 最初にデフォルト値を明示しておく（これが重要！）
+    oshime_low = ma75 * 0.95
+    oshime_high = ma75
+    profit_target = close * 1.03
+
+    if adx > 25:
+        if rsi < 50:
+            # トレンド強く、まだ買われ過ぎでない → 押し目チャンス
+            oshime_low = ma25 * 0.97
+            oshime_high = ma25
+        elif rsi > 70:
+            # トレンド強いが過熱 → 利確重視
+            profit_target = close * 0.98  # 手前で利確
+    elif adx < 15:
+        # トレンドが弱い → レンジ。深い押し目狙い
+        oshime_low = ma75 * 0.93
+        oshime_high = ma75 * 0.98
+
+    return oshime_low, oshime_high, profit_target
+
+def generate_zone_comment(close, profit_target, oshime_low, oshime_high, rsi, adx, trend):
+    # 状況別コメントロジック
+    if close >= profit_target:
+        if rsi > 70:
+            comment = (
+                f"The current price is within the profit-taking zone, and the RSI is {rsi:.1f}, "
+                f"indicating an overbought condition. Full profit-taking should be considered."
+            )
+            color = "#cc0000"  # 濃い赤（全利確）
+        else:
+            comment = (
+                f"The price has reached the profit-taking zone (from {profit_target:.1f} JPY), "
+                f"but the RSI is {rsi:.1f}, suggesting moderate momentum. Partial profit-taking may be appropriate."
+            )
+            color = "#f4c2c2"  # 淡い赤（部分利確）
+
+    elif oshime_low <= close <= oshime_high:
+        if rsi < 50 and adx > 25:
+            comment = (
+                f"The price is approaching the pullback zone ({oshime_low:.1f}–{oshime_high:.1f} JPY). "
+                f"RSI: {rsi:.1f}, ADX: {adx:.1f}. This indicates a strong uptrend undergoing a temporary correction. "
+                f"A rebound is worth monitoring."
+            )
+            color = "#006400"  # 濃い緑（全力買い）
+        else:
+            comment = (
+                f"The price is within the pullback zone, but RSI is {rsi:.1f} and ADX is {adx:.1f}, "
+                f"suggesting a weaker trend. Entry should be made with caution."
+            )
+            color = "#b2d8b2"  # 淡い緑（打診買い）
+
+    else:
+        comment = (
+            f"The price is currently outside the defined zones. "
+            f"Consider taking a cautious approach to both entries and exits."
+        )
+        color = "#d3d3d3"  # グレー（中立ゾーン）
+
+    return comment, color
+
 def plot_chart(df, symbol, name):
 
     rcParams['font.family'] = ['MS Gothic', 'Meiryo', 'Arial Unicode MS']  # ✅ Windows向けフォント
 
-    df_recent = df.tail(100).copy()
+    recent_days = 60
+    df_recent = df.tail(recent_days).copy()
 
     latest = df_recent.iloc[-1]
 
+    if latest["MA5"] > latest["MA25"] > latest["MA75"]:
+        trend_text = "UP"
+    elif latest["MA5"] < latest["MA25"] < latest["MA75"]:
+        trend_text = "DOWN"
+    else:
+        trend_text = "SIDEWAY"
+
+    # ✅ 動的ゾーンを取得（関数呼び出し）
+    oshime_low, oshime_high, profit_target = judge_dynamic_zones(latest)
+ 
     support_20 = df_recent["Low"].tail(20).min()
     resist_20 = df_recent["High"].tail(20).max()
     support_60 = df_recent["Low"].tail(60).min()
@@ -92,14 +173,87 @@ def plot_chart(df, symbol, name):
             mpf.make_addplot(signal_up, panel=3, color='#f4c187', width=1.2),   # Signal↑：淡橙
             mpf.make_addplot(signal_down, panel=3, color='#d6b3f6', width=1.2), # Signal↓：淡紫
         ],
-        title=f"{name} ({symbol}) - Stock Chart",
+        #title = f"{name} ({symbol}) {recent_days} DaysChart/Trend: {trend_text}",
+        title="",  # 🔁 ここを空に
         ylabel="Price",
         volume=True,
-        figscale=1.1,
+        figscale=1.5,
         returnfig=True
     )
 
+    fig.subplots_adjust(left=0.08, right=0.92)
+
+    # 📝 タイトル & コメントを手動で追加
+    fig.suptitle(
+        f"{name} ({symbol}) {recent_days} DaysChart / Trend: {trend_text}",
+        fontsize=12,
+        fontweight='bold',
+        ha='center',
+        x=0.55,
+        y=0.98
+    )
+
+    zone_comment, comment_color = generate_zone_comment(
+        close=latest["Close"],
+        profit_target=profit_target,
+        oshime_low=oshime_low,
+        oshime_high=oshime_high,
+        rsi=latest["RSI"],
+        adx=latest["ADX"],
+        trend=trend_text
+    )
+
+    fig.text(
+        0.55, 0.92,
+        zone_comment,
+        ha='center',
+        fontsize=9,
+        wrap=True,
+        bbox=dict(
+            facecolor=comment_color,
+            edgecolor='gray',
+            boxstyle='round,pad=0.3',
+            alpha=0.6
+        )
+    )
+
     ax_main = axes[0]
+
+    x = range(len(df_recent))
+    # 押し目ゾーン（緑）
+    ax_main.fill_between(
+        x, oshime_low, oshime_high,
+        where=[True] * len(df_recent),
+        facecolor='green', alpha=0.15, label='押し目ゾーン'
+    )
+    # 利確ゾーン（オレンジ）
+    ax_main.fill_between(
+        x, profit_target, df_recent["High"].max(),
+        where=[True] * len(df_recent),
+        facecolor='orange', alpha=0.15, label='利確ゾーン'
+    )
+
+    # ✅ 押し目マーカー表示（緑の●）
+    oshime_condition = (
+        (df_recent["RSI"] > 40) & (df_recent["RSI"] < 55) &
+        (df_recent["Close"] >= df_recent["MA25"] * 0.97) & (df_recent["Close"] <= df_recent["MA25"])
+    )
+    for idx in df_recent[oshime_condition].index:
+        x_pos = df_recent.index.get_loc(idx)
+        y_val = df_recent.loc[idx, "Low"]
+        ax_main.plot(x_pos, y_val, marker='o', color='green', markersize=6, zorder=5)
+
+    # ✅ 売りときマーカー表示（赤い✕）
+    uri_condition = (
+        (df_recent["RSI"] >= 70) &
+        (df_recent["Close"] >= profit_target)
+    )
+
+    for idx in df_recent[uri_condition].index:
+        x_pos = df_recent.index.get_loc(idx)
+        y_val = df_recent.loc[idx, "High"]
+        ax_main.plot(x_pos, y_val, marker='x', color='red', markersize=7, linewidth=2, zorder=6)
+
     x = range(len(df_recent))
     senkou1 = df_recent["senkou1"]
     senkou2 = df_recent["senkou2"]
@@ -125,13 +279,6 @@ def plot_chart(df, symbol, name):
         fontsize=9,
         fontweight='bold'
     )
-
-    #spacing = 0.07
-    #base_y = 0.95
-    #base_x = 0.5
-    #ax_main.text(base_x, base_y, f"05DMA: {latest['MA5']:,.1f}", transform=ax_main.transAxes, color="#1f77b4", **annotation_style)
-    #ax_main.text(base_x, base_y - spacing, f"25DMA: {latest['MA25']:,.1f}", transform=ax_main.transAxes, color="#ff7f0e", **annotation_style)
-    #ax_main.text(base_x, base_y - 2 * spacing, f"75DMA: {latest['MA75']:,.1f}", transform=ax_main.transAxes, color="#9467bd", **annotation_style)
 
     # ✅ 移動平均線ラベルを左上に横並びで表示
     spacing_x = 0.18  # ラベル間の横スペース（0.10〜0.18あたりで調整可能）
@@ -307,12 +454,14 @@ def plot_chart(df, symbol, name):
     os.makedirs(folder_name, exist_ok=True)  # フォルダがなければ作成
 
     # 🖼 保存ファイル名（例: chart_2385_2025-06-21.png）
-    file_name = f"chart_{symbol}_{today_str}.png"
+    #file_name = f"chart_{symbol}_{today_str}.png"
+    file_name = f"chart_{symbol}_{name}_{today_str}.png"
     save_path = os.path.join(folder_name, file_name)
 
     # 💾 保存
     fig.savefig(save_path)
-    print(f"📈 Saved with MA, S/R lines, and Ichimoku Cloud (filled): {save_path}")
+    #print(f"📈 Saved with MA, S/R lines, and Ichimoku Cloud (filled): {save_path}")
+    print(f"📈 {save_path}")
     plt.close(fig)  # ✅ メモリリーク防止
 
     return save_path  # ✅ ← この行を追加！

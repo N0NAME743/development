@@ -1,11 +1,18 @@
 # ==============================
-# main.py｜Gyazoアップロード + JSONログ + CSV出力（統合版）
+# main.py｜Gyazoアップロード + JSONログ + CSV出力 + 進捗表示
 # ==============================
+
+# Gyazoアップロードなしで実行
+# python main.py
+# Gyazoアップロードを有効にして実行
+# python main.py --upload
 
 import os
 import json
 import csv
+import time
 import hashlib
+import argparse
 from datetime import datetime
 import matplotlib.pyplot as plt
 
@@ -14,11 +21,28 @@ from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
 from gyazo_uploader import upload_to_gyazo
 
-# ✅ フォント設定
 plt.rcParams['font.family'] = JP_FONT
 
-# ✅ Gyazoアップロードを有効にするか
-ENABLE_GYAZO_UPLOAD = False  # ← False にするとアップロード処理をスキップ
+# ==============================
+# コマンドライン引数でGyazoアップロードを切替
+# ==============================
+
+parser = argparse.ArgumentParser(description="株価チャート自動処理")
+parser.add_argument("--upload", action="store_true", help="Gyazoにアップロードする")
+args = parser.parse_args()
+ENABLE_GYAZO_UPLOAD = args.upload
+
+# ==============================
+# 設定
+# ==============================
+
+today_str = datetime.today().strftime('%Y-%m-%d')
+LOG_PATH_ALL = "result/gyazo_log.json"
+LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
+GYAZO_ACCESS_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
+
+os.makedirs(os.path.dirname(LOG_PATH_ALL), exist_ok=True)
+os.makedirs(os.path.dirname(LOG_PATH_DAILY), exist_ok=True)
 
 # ==============================
 # 補助関数群
@@ -59,78 +83,89 @@ def write_gyazo_csv(out_folder, entries):
                 "url": entry.get("gyazo_url", "")
             })
 
-# ✅ 各種パスと設定
-
-today_str = datetime.today().strftime('%Y-%m-%d')
-LOG_PATH_ALL = "result/gyazo_log.json"
-LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
-
-# ✅ Gyazoトークン（必要に応じて変更）
-GYAZO_ACCESS_TOKEN = "YOUR_GYAZO_ACCESS_TOKEN_HERE"
-
-# フォルダ作成
-os.makedirs(os.path.dirname(LOG_PATH_ALL), exist_ok=True)
-os.makedirs(os.path.dirname(LOG_PATH_DAILY), exist_ok=True)
-
 # ==============================
 # メイン処理
 # ==============================
 
 def main():
     symbols = get_symbols_from_excel()
+    total = len(symbols)
     uploaded_hashes, log_data_all = load_uploaded_hashes_json(LOG_PATH_ALL)
     _, log_data_daily = load_uploaded_hashes_json(LOG_PATH_DAILY)
     uploaded_today = []
 
-    print(f"✅ Excelから読み込み成功: {len(symbols)}銘柄")
+    if total == 0:
+        print("❌ 処理対象の銘柄がありません")
+        return
 
-    for symbol in symbols:
-        print(f"▶ 処理中: {symbol}")
-        df, name = fetch_stock_data(symbol)
-        if df is None:
-            print(f"⚠ データ取得スキップ: {symbol}")
-            continue
+    print(f"✅ Excelから読み込み成功: {total}銘柄")
+    print("━━━━━━━━━━━━━━━━━━━━")
 
-        df = add_indicators(df)
-        image_path = plot_chart(df, symbol, name)
-        image_hash = get_file_md5(image_path)
+    start_time = time.time()
 
-        if image_hash in uploaded_hashes:
-            print(f"⏭ すでにアップロード済み（同一内容）: {image_path}")
-            continue
+    for idx, symbol in enumerate(symbols, 1):
+        t0 = time.time()
+        print(f"▶ 処理中: {symbol} │ {idx}/{total}件中", end="")
 
-        desc = f"{symbol} {name} の株価チャート（{today_str}）"
-        gyazo_url = None
+        try:
+            df, name = fetch_stock_data(symbol)
+            if df is None:
+                raise ValueError("データ取得失敗")
 
-        if ENABLE_GYAZO_UPLOAD:
-            gyazo_url = upload_to_gyazo(image_path, GYAZO_ACCESS_TOKEN, desc=desc)
+            df = add_indicators(df)
+            image_path = plot_chart(df, symbol, name)
+            image_hash = get_file_md5(image_path)
 
-        new_entry = {
-            "symbol": symbol,
-            "name": name,
-            "date": today_str,
-            "image_path": image_path,
-            "gyazo_url": gyazo_url,
-            "hash": image_hash,
-            "score": None,
-            "comment": None
-        }
+            if image_hash in uploaded_hashes:
+                print(" ⏭ すでにアップロード済み")
+                continue
 
-        append_upload_log_json(LOG_PATH_ALL, log_data_all, new_entry)
-        append_upload_log_json(LOG_PATH_DAILY, log_data_daily, new_entry)
-        uploaded_today.append(new_entry)
+            gyazo_url = None
+            desc = f"{symbol} {name} の株価チャート（{today_str}）"
 
-        if ENABLE_GYAZO_UPLOAD and gyazo_url:
-            print(f"\U0001F517 Gyazo URL 保存: {gyazo_url}")
-        elif ENABLE_GYAZO_UPLOAD:
-            print("⚠ Gyazoアップロードに失敗しました")
-        else:
-            print("🚫 Gyazoアップロードはスキップされました")
+            if ENABLE_GYAZO_UPLOAD:
+                gyazo_url = upload_to_gyazo(image_path, GYAZO_ACCESS_TOKEN, desc=desc)
+
+            new_entry = {
+                "symbol": symbol,
+                "name": name,
+                "date": today_str,
+                "image_path": image_path,
+                "gyazo_url": gyazo_url,
+                "hash": image_hash,
+                "score": None,
+                "comment": None
+            }
+
+            append_upload_log_json(LOG_PATH_ALL, log_data_all, new_entry)
+            append_upload_log_json(LOG_PATH_DAILY, log_data_daily, new_entry)
+            uploaded_today.append(new_entry)
+
+            elapsed = time.time() - t0
+            remaining = elapsed * (total - idx)
+            mins, secs = divmod(int(remaining), 60)
+
+            if ENABLE_GYAZO_UPLOAD:
+                if gyazo_url:
+                    print(f" ✅ Gyazo: {gyazo_url} │ 残り: {mins}分{secs}秒")
+                else:
+                    print(f" ⚠ アップロード失敗 │ 残り: {mins}分{secs}秒")
+            else:
+                print(f" 🚫 Gyazoスキップ │ 残り: {mins}分{secs}秒")
+
+        except Exception as e:
+            print(f"\n❌ エラー発生: {symbol} - {e}")
+
+    total_time = time.time() - start_time
+    t_min, t_sec = divmod(int(total_time), 60)
 
     out_folder = f"result/{today_str}"
     os.makedirs(out_folder, exist_ok=True)
     write_gyazo_csv(out_folder, uploaded_today)
-    print(f"✅ Gyazoアップロード履歴CSVを書き出しました: {out_folder}/gyazo_uploaded.csv")
+
+    print("━━━━━━━━━━━━━━━━━━━━")
+    print(f"✅ 全銘柄処理完了（所要時間: {t_min}分{t_sec}秒）")
+    print(f"📄 CSV出力: {out_folder}/gyazo_uploaded.csv")
 
 if __name__ == "__main__":
     main()
