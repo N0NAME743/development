@@ -6,7 +6,7 @@ import pandas as pd
 import yfinance as yf
 from setup import EXCEL_PATH
 
-print("📄 このファイルは実行されています:", __file__)
+#print("📄 このファイルは実行されています:", __file__)
 
 def get_symbols_from_excel():
     try:

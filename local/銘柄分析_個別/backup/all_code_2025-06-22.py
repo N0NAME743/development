@@ -1,4 +1,67 @@
 # ==============================
+# Sec｜Setup.py
+# ==============================
+
+"""
+初回実行時に必要なライブラリ：
+pip install -r requirements.txt
+または個別に以下を実行してください：
+
+pip install yfinance japanize-matplotlib mplfinance ta pandas matplotlib openpyxl
+"""
+
+print("📄 このファイルは実行されています:", __file__)
+
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+# ✅ グローバルフォント設定（日本語表示用）
+JP_FONT = "IPAexGothic"
+plt.rcParams['font.family'] = JP_FONT
+
+# ✅ Excelファイルパス
+EXCEL_PATH = "Symbols.xlsx"
+
+# ✅ 使用可能なIPAフォント確認（任意）
+for f in fm.fontManager.ttflist:
+    if 'IPAex' in f.name:
+        print("✅ 利用可能なIPAフォント:", f.name, f.fname)
+
+# ==============================
+# Sec｜stock_data.py
+# ==============================
+
+import pandas as pd
+import yfinance as yf
+from setup import EXCEL_PATH
+
+print("📄 このファイルは実行されています:", __file__)
+
+def get_symbols_from_excel():
+    try:
+        df = pd.read_excel(EXCEL_PATH)
+        df.columns = df.columns.str.strip().str.lower()
+        if "symbol" not in df.columns:
+            raise ValueError("❌ 'symbol'列が見つかりません")
+        return df["symbol"].dropna().tolist()
+    except Exception as e:
+        print(f"❌ Excel読み込み失敗: {e}")
+        return []
+
+def fetch_stock_data(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        name = ticker.info.get("shortName", symbol)
+        df = ticker.history(period="18mo", interval="1d")
+        if df.empty:
+            raise ValueError("データが空です")
+        df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"]).copy()
+        return df, name
+    except Exception as e:
+        print(f"❌ データ取得失敗: {symbol} - {e}")
+        return None, symbol
+    
+# ==============================
 # Sec｜chart_config.py
 # ==============================
 
@@ -15,7 +78,7 @@ from ta.volatility import BollingerBands
 from matplotlib import rcParams
 from matplotlib.ticker import ScalarFormatter, FuncFormatter
 
-#print("📄 このファイルは実行されています:", __file__)
+print("📄 このファイルは実行されています:", __file__)
 
 def add_indicators(df):
     df["MA5"] = df["Close"].rolling(5).mean()
@@ -122,26 +185,21 @@ def analyze_signals(df_recent):
     # 🟢 ゴールデンクロス（MA5 > MA25）
     if latest["MA5"] > latest["MA25"] and df_recent["MA5"].iloc[-2] <= df_recent["MA25"].iloc[-2]:
         signals["buy"].append("MAゴールデンクロス（短期 > 中期）")
-
     # 🟢 RSI反発（30以下 → 上昇）
     if df_recent["RSI"].iloc[-2] < 30 and latest["RSI"] >= 30:
         signals["buy"].append(f"RSI反発（{df_recent['RSI'].iloc[-2]:.1f} → {latest['RSI']:.1f}）")
-
     # 🟢 MACD陽転
     if df_recent["MACD"].iloc[-2] < df_recent["MACD_signal"].iloc[-2] and latest["MACD"] > latest["MACD_signal"]:
         signals["buy"].append("MACD陽転（シグナル上抜け）")
-
     # 🟢 出来高急増（前日比1.5倍以上）
     vol_ratio = latest["Volume"] / df_recent["Volume"].iloc[-2]
     if vol_ratio >= 1.5:
         signals["buy"].append(f"出来高急増（{vol_ratio:.1f}倍）")
-
     # 🔴 RSI過熱 + 利確圏
     if latest["RSI"] >= 70:
         signals["sell"].append(f"RSI過熱（{latest['RSI']:.1f}）")
     if latest["Close"] > latest["MA25"] * 1.05:
         signals["sell"].append("株価が中期線を大きく乖離（利確圏）")
-
     # ⚪ 中立：レンジ or 雲ねじれ
     if latest["ADX"] < 15:
         signals["neutral"].append(f"ADXが低下中（{latest['ADX']:.1f}）→トレンド弱")
@@ -150,15 +208,6 @@ def analyze_signals(df_recent):
     senkou2 = df_recent["senkou2"].iloc[-1]
     if abs(senkou1 - senkou2) < 0.5:
         signals["neutral"].append("一目均衡表の雲がねじれ状態")
-
-    # ✅ 押し目ゾーン判定（MACD状況にかかわらず）
-    oshime_low, oshime_high, _ = judge_dynamic_zones(latest)
-    in_pullback_zone = oshime_low <= latest["Close"] <= oshime_high
-    strong_trend = latest["ADX"] > 25
-    rsi_moderate = latest["RSI"] < 55
-
-    if in_pullback_zone and strong_trend and rsi_moderate:
-        signals["buy"].append("押し目ゾーンに到達（MACD下落中だが強トレンド・RSI低下）")
 
     return signals
 
@@ -169,28 +218,19 @@ def generate_signal_comment(signals):
 
     parts = []
 
-    # 詳細列挙
     if buy_signals:
         parts.append(f"📈 買いシグナル: " + "、".join(buy_signals))
+
     if sell_signals:
         parts.append(f"📉 売りシグナル: " + "、".join(sell_signals))
+
     if neutral_signals and not (buy_signals or sell_signals):
         parts.append(f"⚪ 中立シグナル: " + "、".join(neutral_signals))
 
-    # 総評の生成
-    summary = ""
-    if buy_signals and not sell_signals:
-        summary = "✅ 現状は買い優勢の状況です。押し目やエントリーポイントを検討する局面と考えられます。"
-    elif sell_signals and not buy_signals:
-        summary = "⚠ 売りシグナルが優勢です。利確や調整の可能性に注意が必要な局面です。"
-    elif buy_signals and sell_signals:
-        summary = "🔄 買いと売りのシグナルが混在しています。方向感に乏しく、様子見が無難です。"
-    elif neutral_signals:
-        summary = "🔍 特筆すべき売買シグナルは見られず、様子見の局面です。"
-    else:
-        summary = "📭 テクニカルシグナルは確認されませんでした。データ不足か静かな相場の可能性があります。"
+    if not parts:
+        return "特筆すべきテクニカルシグナルは確認されませんでした。"
 
-    return summary + "\n" + " / ".join(parts) if parts else summary
+    return " / ".join(parts)
 
 def plot_chart(df, symbol, name):
 
@@ -618,3 +658,236 @@ def plot_chart(df, symbol, name):
     signal_comment = generate_signal_comment(signals)
 
     return save_path, signals, signal_comment
+
+# ==============================
+# Sec｜gyazo_uploader.py
+# ==============================
+
+import requests
+
+print("📄 このファイルは実行されています:", __file__)
+
+def upload_to_gyazo(image_path: str, access_token: str, desc: str = None) -> str:
+    """
+    Gyazoへ画像をアップロードしてURLを返す
+
+    Args:
+        image_path (str): 画像ファイルのパス
+        access_token (str): Gyazo APIトークン
+        desc (str, optional): Gyazo画像の説明文（任意）
+
+    Returns:
+        str: Gyazo画像URL（失敗時はNone）
+    """
+    upload_url = "https://upload.gyazo.com/api/upload"
+
+    try:
+        with open(image_path, 'rb') as image_file:
+            data = {'access_token': access_token}
+            if desc:
+                data['desc'] = desc
+
+            response = requests.post(
+                upload_url,
+                data=data,
+                files={'imagedata': image_file},
+                timeout=10
+            )
+
+        response.raise_for_status()
+
+        url = response.json().get("url")
+        if not url:
+            print("⚠️ Gyazoアップロードは成功しましたが、URLが取得できませんでした。")
+            return None
+
+        print(f"✅ Gyazoアップロード成功: {url}")
+        return url
+
+    except requests.exceptions.Timeout:
+        print("❌ タイムアウトによりGyazoアップロードに失敗しました。")
+    except requests.exceptions.HTTPError as e:
+        print(f"❌ HTTPエラーが発生しました: {e}")
+        if e.response is not None:
+            print(f"  - ステータスコード: {e.response.status_code}")
+            print(f"  - レスポンス内容: {e.response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ リクエストエラー: {e}")
+    except Exception as e:
+        print(f"❌ 予期せぬエラー: {e}")
+
+    return None
+
+# ==============================
+# main.py｜Gyazoアップロード + JSONログ + CSV出力 + 進捗表示
+# ==============================
+
+# Gyazoアップロードなしで実行
+# python main.py
+# Gyazoアップロードを有効にして実行
+# python main.py --upload
+
+import os
+import json
+import csv
+import time
+import hashlib
+import argparse
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+from setup import JP_FONT
+from stock_data import get_symbols_from_excel, fetch_stock_data
+from chart_config import add_indicators, plot_chart
+from gyazo_uploader import upload_to_gyazo
+
+plt.rcParams['font.family'] = JP_FONT
+
+# ==============================
+# コマンドライン引数でGyazoアップロードを切替
+# ==============================
+
+parser = argparse.ArgumentParser(description="株価チャート自動処理")
+parser.add_argument("--upload", action="store_true", help="Gyazoにアップロードする")
+args = parser.parse_args()
+ENABLE_GYAZO_UPLOAD = args.upload
+
+# ==============================
+# 設定
+# ==============================
+
+today_str = datetime.today().strftime('%Y-%m-%d')
+LOG_PATH_ALL = "result/gyazo_log.json"
+LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
+GYAZO_ACCESS_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
+
+os.makedirs(os.path.dirname(LOG_PATH_ALL), exist_ok=True)
+os.makedirs(os.path.dirname(LOG_PATH_DAILY), exist_ok=True)
+
+# ==============================
+# 補助関数群
+# ==============================
+
+def load_uploaded_hashes_json(log_path):
+    if not os.path.exists(log_path):
+        return set(), []
+    with open(log_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        return set(entry["hash"] for entry in data), data
+
+def append_upload_log_json(log_path, log_data, new_entry):
+    log_data.append(new_entry)
+    with open(log_path, 'w', encoding='utf-8') as f:
+        json.dump(log_data, f, ensure_ascii=False, indent=2)
+
+def get_file_md5(file_path):
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+def write_gyazo_csv(out_folder, entries):
+    out_path = os.path.join(out_folder, "gyazo_uploaded.csv")
+    file_exists = os.path.exists(out_path)
+    with open(out_path, mode='a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=["date", "symbol", "name", "hash", "url"])
+        if not file_exists:
+            writer.writeheader()
+        for entry in entries:
+            writer.writerow({
+                "date": entry["date"],
+                "symbol": entry["symbol"],
+                "name": entry["name"],
+                "hash": entry["hash"],
+                "url": entry.get("gyazo_url", "")
+            })
+
+# ==============================
+# メイン処理
+# ==============================
+
+def main():
+    symbols = get_symbols_from_excel()
+    total = len(symbols)
+    uploaded_hashes, log_data_all = load_uploaded_hashes_json(LOG_PATH_ALL)
+    _, log_data_daily = load_uploaded_hashes_json(LOG_PATH_DAILY)
+    uploaded_today = []
+
+    if total == 0:
+        print("❌ 処理対象の銘柄がありません")
+        return
+
+    print(f"✅ Excelから読み込み成功: {total}銘柄")
+    print("━━━━━━━━━━━━━━━━━━━━")
+
+    start_time = time.time()
+
+    for idx, symbol in enumerate(symbols, 1):
+        t0 = time.time()
+        print(f"▶ 処理中: {symbol} │ {idx}/{total}件中", end="")
+
+        try:
+            df, name = fetch_stock_data(symbol)
+            if df is None:
+                raise ValueError("データ取得失敗")
+
+            df = add_indicators(df)
+            #image_path = plot_chart(df, symbol, name)
+            image_path, signals, signal_comment = plot_chart(df, symbol, name)
+            image_hash = get_file_md5(image_path)
+
+            if image_hash in uploaded_hashes:
+                print(" ⏭ すでにアップロード済み")
+                continue
+
+            gyazo_url = None
+            desc = f"{symbol} {name} の株価チャート（{today_str}）"
+
+            if ENABLE_GYAZO_UPLOAD:
+                gyazo_url = upload_to_gyazo(image_path, GYAZO_ACCESS_TOKEN, desc=desc)
+
+            new_entry = {
+                "symbol": symbol,
+                "name": name,
+                "date": today_str,
+                "image_path": image_path,
+                "gyazo_url": gyazo_url,
+                "hash": image_hash,
+                "score": None,
+                "comment": None,
+                "signals": signals  # ← 分類付きで記録
+            }
+
+            append_upload_log_json(LOG_PATH_ALL, log_data_all, new_entry)
+            append_upload_log_json(LOG_PATH_DAILY, log_data_daily, new_entry)
+            uploaded_today.append(new_entry)
+
+            elapsed = time.time() - t0
+            remaining = elapsed * (total - idx)
+            mins, secs = divmod(int(remaining), 60)
+
+            if ENABLE_GYAZO_UPLOAD:
+                if gyazo_url:
+                    print(f" ✅ Gyazo: {gyazo_url} │ 残り: {mins}分{secs}秒")
+                else:
+                    print(f" ⚠ アップロード失敗 │ 残り: {mins}分{secs}秒")
+            else:
+                print(f" 🚫 Gyazoスキップ │ 残り: {mins}分{secs}秒")
+
+        except Exception as e:
+            print(f"\n❌ エラー発生: {symbol} - {e}")
+
+    total_time = time.time() - start_time
+    t_min, t_sec = divmod(int(total_time), 60)
+
+    out_folder = f"result/{today_str}"
+    os.makedirs(out_folder, exist_ok=True)
+    write_gyazo_csv(out_folder, uploaded_today)
+
+    print("━━━━━━━━━━━━━━━━━━━━")
+    print(f"✅ 全銘柄処理完了（所要時間: {t_min}分{t_sec}秒）")
+    print(f"📄 CSV出力: {out_folder}/gyazo_uploaded.csv")
+
+if __name__ == "__main__":
+    main()

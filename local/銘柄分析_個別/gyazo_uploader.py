@@ -4,7 +4,7 @@
 
 import requests
 
-print("📄 このファイルは実行されています:", __file__)
+#print("📄 このファイルは実行されています:", __file__)
 
 def upload_to_gyazo(image_path: str, access_token: str, desc: str = None) -> str:
     """

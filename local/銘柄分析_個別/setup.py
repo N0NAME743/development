@@ -10,7 +10,7 @@ pip install -r requirements.txt
 pip install yfinance japanize-matplotlib mplfinance ta pandas matplotlib openpyxl
 """
 
-print("📄 このファイルは実行されています:", __file__)
+#print("📄 このファイルは実行されています:", __file__)
 
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
