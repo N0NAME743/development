@@ -5,6 +5,7 @@
 ├── stock_data.py           ← データ取得（yfinance + Excel）
 ├── chart_config.py         ← チャート描画（mplfinance・注釈付き）
 ├── gyazo_uploader.py       ← Gyazoへのアップロード処理（API連携）
+├── slack_notifier.py       ← 🆕 Slack通知の処理（Webhook＋整形）
 ├── main.py                 ← 全体統括・ループ処理
 ├── output/                 ← チャート画像出力
 │   └── chart/YYYY-MM-DD/chart_XXXX.png     

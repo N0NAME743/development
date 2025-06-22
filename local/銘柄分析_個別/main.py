@@ -1,11 +1,6 @@
 # ==============================
-# main.py｜Gyazoアップロード + JSONログ + CSV出力 + 進捗表示
+# main.py｜Gyazoアップロード + JSONログ + CSV出力 + Slack通知 + 進捗表示
 # ==============================
-
-# Gyazoアップロードなしで実行
-# python main.py
-# Gyazoアップロードを有効にして実行
-# python main.py --upload
 
 import os
 import json
@@ -20,11 +15,19 @@ from setup import JP_FONT
 from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
 from gyazo_uploader import upload_to_gyazo
+from slack_notifier import send_to_slack  # ✅ Slack通知用
 
+# ==============================
+# 設定
+# ==============================
+
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL") or "https://hooks.slack.com/services/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"
+ENABLE_SLACK = True
+GYAZO_ACCESS_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
 plt.rcParams['font.family'] = JP_FONT
 
 # ==============================
-# コマンドライン引数でGyazoアップロードを切替
+# コマンドライン引数（Gyazo有効化）
 # ==============================
 
 parser = argparse.ArgumentParser(description="株価チャート自動処理")
@@ -33,14 +36,12 @@ args = parser.parse_args()
 ENABLE_GYAZO_UPLOAD = args.upload
 
 # ==============================
-# 設定
+# 日付ベースの保存パス
 # ==============================
 
 today_str = datetime.today().strftime('%Y-%m-%d')
 LOG_PATH_ALL = "result/gyazo_log.json"
 LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
-GYAZO_ACCESS_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
-
 os.makedirs(os.path.dirname(LOG_PATH_ALL), exist_ok=True)
 os.makedirs(os.path.dirname(LOG_PATH_DAILY), exist_ok=True)
 
@@ -113,17 +114,26 @@ def main():
                 raise ValueError("データ取得失敗")
 
             df = add_indicators(df)
-            image_path = plot_chart(df, symbol, name)
+            image_path, signals, signal_comment = plot_chart(df, symbol, name)
             image_hash = get_file_md5(image_path)
 
+            # ✅ アップロード済みの場合 → Slack通知だけ送る
             if image_hash in uploaded_hashes:
                 print(" ⏭ すでにアップロード済み")
+
+                # Slack通知は新規アップロード時だけにしたいのでここは無効化
+                # if ENABLE_SLACK:
+                #     matched = next((entry for entry in log_data_all if entry["hash"] == image_hash), None)
+                #     if matched:
+                #         msg = f"*📈 {matched['name']} ({matched['symbol']})*\n{matched['comment']}\n📸 {matched['gyazo_url'] or '画像なし'}"
+                #         send_to_slack(SLACK_WEBHOOK_URL, msg)
+
                 continue
 
+            # ✅ 新規アップロード処理
             gyazo_url = None
-            desc = f"{symbol} {name} の株価チャート（{today_str}）"
-
             if ENABLE_GYAZO_UPLOAD:
+                desc = f"{symbol} {name} の株価チャート（{today_str}）"
                 gyazo_url = upload_to_gyazo(image_path, GYAZO_ACCESS_TOKEN, desc=desc)
 
             new_entry = {
@@ -134,22 +144,25 @@ def main():
                 "gyazo_url": gyazo_url,
                 "hash": image_hash,
                 "score": None,
-                "comment": None
+                "comment": signal_comment,
+                "signals": signals
             }
 
             append_upload_log_json(LOG_PATH_ALL, log_data_all, new_entry)
             append_upload_log_json(LOG_PATH_DAILY, log_data_daily, new_entry)
             uploaded_today.append(new_entry)
 
+            # ✅ Slack通知（新規アップロード時も送信）
+            if ENABLE_SLACK:
+                msg = f"*📈 {name} ({symbol})*\n{signal_comment}\n📸 {gyazo_url or '画像なし'}"
+                send_to_slack(SLACK_WEBHOOK_URL, msg)
+
             elapsed = time.time() - t0
             remaining = elapsed * (total - idx)
             mins, secs = divmod(int(remaining), 60)
 
             if ENABLE_GYAZO_UPLOAD:
-                if gyazo_url:
-                    print(f" ✅ Gyazo: {gyazo_url} │ 残り: {mins}分{secs}秒")
-                else:
-                    print(f" ⚠ アップロード失敗 │ 残り: {mins}分{secs}秒")
+                print(f" ✅ Gyazo: {gyazo_url or '❌'} │ 残り: {mins}分{secs}秒")
             else:
                 print(f" 🚫 Gyazoスキップ │ 残り: {mins}分{secs}秒")
 
