@@ -21,7 +21,7 @@ from slack_notifier import send_to_slack  # ✅ Slack通知用
 # 設定
 # ==============================
 
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL") or "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL") or "https://hooks.slack.com/services/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"
 
 # 🎯 コマンドライン引数に --upload, --slack を追加
 parser = argparse.ArgumentParser(description="株価チャート自動処理")
@@ -122,11 +122,11 @@ def main():
                 # Slack通知は新規アップロード時だけにしたいのでここは無効化
                 if ENABLE_SLACK:
                     print(f"🚫 Slack通知スキップ（すでにアップロード済み: {symbol}）")
-                #     matched = next((entry for entry in log_data_all if entry["hash"] == image_hash), None)
-                #     if matched:
-                #         msg = f"*📈 {matched['name']} ({matched['symbol']})*\n{matched['comment']}\n📸 {matched['gyazo_url'] or '画像なし'}"
-                #         time.sleep(1)  # ← Slackは1秒間隔で安全
-                #         send_to_slack(SLACK_WEBHOOK_URL, msg)
+                    #matched = next((entry for entry in log_data_all if entry["hash"] == image_hash), None)
+                    #if matched:
+                    #    msg = f"*📈 {matched['name']} ({matched['symbol']})*\n{matched['comment']}\n📸 {matched['gyazo_url'] or '画像なし'}"
+                    #    time.sleep(1)  # ← Slackは1秒間隔で安全
+                    #  send_to_slack(SLACK_WEBHOOK_URL, msg)
 
                 continue
 
