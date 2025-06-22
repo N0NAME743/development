@@ -37,24 +37,6 @@ plt.rcParams['font.family'] = JP_FONT
 # 日付ベースの保存パス
 # ==============================
 
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL") or "https://hooks.slack.com/services/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"
-
-# 🎯 コマンドライン引数に --upload, --slack を追加
-parser = argparse.ArgumentParser(description="株価チャート自動処理")
-parser.add_argument("--upload", action="store_true", help="Gyazoにアップロードする")
-parser.add_argument("--slack", action="store_true", help="Slack通知を有効にする")
-args = parser.parse_args()
-
-ENABLE_GYAZO_UPLOAD = args.upload
-ENABLE_SLACK = args.slack
-
-GYAZO_ACCESS_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
-plt.rcParams['font.family'] = JP_FONT
-
-# ==============================
-# 日付ベースの保存パス
-# ==============================
-
 today_str = datetime.today().strftime('%Y-%m-%d')
 LOG_PATH_ALL = "result/gyazo_log.json"
 LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
