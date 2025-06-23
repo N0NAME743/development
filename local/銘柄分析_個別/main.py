@@ -13,6 +13,7 @@ from datetime import datetime
 
 # サードパーティライブラリ
 import matplotlib.pyplot as plt
+import pandas as pd
 from dotenv import load_dotenv  # ✅ .envから環境変数を読み込み
 
 # 自作モジュール（プロジェクト内）
@@ -20,9 +21,9 @@ from setup import JP_FONT
 from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
 from gyazo_uploader import upload_to_gyazo
-from slack_notifier import send_signal_summary
+from slack_notifier import send_signal_summary, notify_signal_alerts_from_uploaded, send_to_slack  # ✅ Slack通知
 from database import load_latest_data, init_db, save_price_data  # ✅ SQLite対応
-from analyzer import analyze_stock, classify_signals
+from analyzer import analyze_stock, classify_signals, detect_signals  # ✅ 分析・シグナル検出
 
 # ==============================
 # 初期設定
@@ -102,77 +103,6 @@ def write_gyazo_csv(csv_path, entries):
                 "hash": entry["hash"],
                 "url": entry.get("gyazo_url", "")
             })
-
-def detect_signals(df_all):
-    buy_signals = []
-    sell_signals = []
-
-    for symbol in df_all["symbol"].unique():
-        df_symbol = df_all[df_all["symbol"] == symbol].copy()
-        if df_symbol.empty or len(df_symbol) < 30:
-            continue
-        df_symbol = df_symbol.sort_values("date")  # 念のため時系列に並び替え
-
-        # 🧠 統合分析ロジックを使用
-        signals, _, _, attention, _, _ = analyze_stock(df_symbol)
-
-        name = df_symbol["name"].iloc[-1]
-
-        # 🎯 通知条件：attention の文字列を使う
-        if "買" in attention:
-            buy_signals.append(f"{symbol}（{name}）: {attention} | {', '.join(signals)}")
-        elif "売" in attention:
-            sell_signals.append(f"{symbol}（{name}）: {attention} | {', '.join(signals)}")
-
-    return buy_signals, sell_signals
-
-def notify_signal_alerts():
-    df = load_latest_data()
-    df = df.drop_duplicates("symbol", keep="last")  # ← ★これで重複防止！
-    buy_list, sell_list = detect_signals(df)
-    send_signal_summary("📈 買いシグナル銘柄", buy_list)
-    send_signal_summary("📉 売りシグナル銘柄", sell_list)
-
-def notify_signal_alerts_from_uploaded(uploaded_today):
-    buy_list, sell_list, neutral_list = [], [], []
-
-    for entry in uploaded_today:
-        attention = entry.get("attention", "")
-        symbol = entry["symbol"]
-        name = entry["name"]
-        signals = entry["signals"]
-
-        buy_signals = signals.get("buy", [])
-        sell_signals = signals.get("sell", [])
-        total_signals = len(buy_signals) + len(sell_signals)
-
-        # Slack整形用関数
-        def format_entry(symbol, name, attention, label, signals):
-            return f"*{symbol}（{name}）: {attention}*\n💡指標 │ {label}：{ '、'.join(signals) }"
-
-        # ✅ 買い優勢（買いシグナル3個以上）
-        if len(buy_signals) >= 3:
-            summary = format_entry(symbol, name, attention, "買い", buy_signals)
-            buy_list.append(summary)
-
-        # ✅ 売り優勢（売りシグナル3個以上）
-        elif len(sell_signals) >= 3:
-            summary = format_entry(symbol, name, attention, "売り", sell_signals)
-            sell_list.append(summary)
-
-        # ✅ シグナル混在（様子見）
-        elif total_signals >= 4:
-            summary = f"{symbol}（{name}）: *{attention}*\n"
-            if buy_signals:
-                summary += f"📈 買い：{ '、'.join(buy_signals) }\n"
-            if sell_signals:
-                summary += f"📉 売り：{ '、'.join(sell_signals) }"
-            neutral_list.append(summary)
-
-    # ✅ Slack通知
-    send_signal_summary("📈 *買いシグナル銘柄*", buy_list)
-    send_signal_summary("📉 *売りシグナル銘柄*", sell_list)
-    send_signal_summary("🌀 *シグナル混在（様子見）*", neutral_list)
 
 # ==============================
 # メイン処理
@@ -311,3 +241,77 @@ if __name__ == "__main__":
 
     #notify_signal_alerts()  # ✅ Slack通知を実行
     notify_signal_alerts_from_uploaded(uploaded_today)
+
+    # === JSON → CSV出力部分（uploaded_today関係なく常に実行） ===
+    # 📁 保存先フォルダ（today_str = '2025-06-23' 形式）
+    daily_folder = os.path.join("result", today_str)
+    os.makedirs(daily_folder, exist_ok=True)
+
+    # ✅ ファイル名は today_compact = '20250623'
+    log_json_path = os.path.join(daily_folder, f"signal_log_{today_compact}.json")
+
+    # ✅ JSONがあれば読み込み、なければ uploaded_today から作る
+    if os.path.exists(log_json_path):
+        with open(log_json_path, "r", encoding="utf-8") as f:
+            all_entries = json.load(f)
+        print(f"📥 既存のJSONログを読み込み: {log_json_path}")
+
+        # ✅ 重複除去ここに入れる！
+        unique_entries = {}
+        for e in all_entries:
+            key = (e["symbol"], e["date"])
+            if key not in unique_entries:
+                unique_entries[key] = e
+        all_entries = list(unique_entries.values())
+
+    elif uploaded_today:
+        with open(log_json_path, "w", encoding="utf-8") as f:
+            json.dump(uploaded_today, f, ensure_ascii=False, indent=2)
+        all_entries = uploaded_today
+        print(f"🆕 JSONログを新規作成: {log_json_path}")
+    else:
+        print("⚠️ JSONログが存在せず、uploaded_today も空のため、出力をスキップします。")
+        all_entries = []
+
+    # ✅ 出力実行（中身があれば）
+    if all_entries:
+        def format_csv_rows(entries):
+            return [{
+                "symbol": e["symbol"],
+                "name": e["name"],
+                "date": e["date"],
+                "attention": e["attention"],
+                "comment": e["comment"],
+                "signals_buy": "、".join(e["signals"].get("buy", [])),
+                "signals_sell": "、".join(e["signals"].get("sell", [])),
+                "gyazo_url": e.get("gyazo_url", ""),
+                "image_path": e.get("image_path", "")
+            } for e in entries]
+
+        buy_entries = [e for e in all_entries if "買い" in e.get("attention", "")]
+        sell_entries = [e for e in all_entries if "売り" in e.get("attention", "")]
+
+        buy_csv_path = os.path.join(daily_folder, f"signal_filtered_buy_{today_compact}.csv")
+        sell_csv_path = os.path.join(daily_folder, f"signal_filtered_sell_{today_compact}.csv")
+
+        pd.DataFrame(format_csv_rows(buy_entries)).to_csv(buy_csv_path, index=False)
+        pd.DataFrame(format_csv_rows(sell_entries)).to_csv(sell_csv_path, index=False)
+
+        print(f"📤 買い銘柄CSV出力: {buy_csv_path}")
+        print(f"📤 売り銘柄CSV出力: {sell_csv_path}")
+    else:
+        print("⚠️ 出力対象のデータが空です。CSV出力はスキップされました。")
+
+    from slack_notifier import send_summary_with_files
+
+    # 出力完了後に追加：
+    if all_entries:
+        ...
+        # 通知送信
+        send_summary_with_files(
+            buy_csv_path=buy_csv_path,
+            sell_csv_path=sell_csv_path,
+            buy_count=len(buy_entries),
+            sell_count=len(sell_entries),
+            date_str=today_str
+        )

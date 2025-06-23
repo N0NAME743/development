@@ -4,6 +4,7 @@ mplfinance
 openpyxl
 pandas
 python-dotenv
+slack-sdk
 ta
 tk
 yfinance

@@ -105,7 +105,6 @@ def detect_weekly_low_break(df):
 
 # ==========================
 
-# analyzer.py の中などに追加
 def evaluate_signal_strength(signals_dict: dict) -> int:
     score = 0
 
@@ -233,3 +232,26 @@ def detect_spike_history(df, threshold=0.4):
     if (change.abs() > threshold).sum() >= 1:
         return "過去に急騰／急落歴あり" #⚠️
     return None
+
+def detect_signals(df_all):
+    buy_signals = []
+    sell_signals = []
+
+    for symbol in df_all["symbol"].unique():
+        df_symbol = df_all[df_all["symbol"] == symbol].copy()
+        if df_symbol.empty or len(df_symbol) < 30:
+            continue
+        df_symbol = df_symbol.sort_values("date")  # 念のため時系列に並び替え
+
+        # 🧠 統合分析ロジックを使用
+        signals, _, _, attention, _, _ = analyze_stock(df_symbol)
+
+        name = df_symbol["name"].iloc[-1]
+
+        # 🎯 通知条件：attention の文字列を使う
+        if "買" in attention:
+            buy_signals.append(f"{symbol}（{name}）: {attention} | {', '.join(signals)}")
+        elif "売" in attention:
+            sell_signals.append(f"{symbol}（{name}）: {attention} | {', '.join(signals)}")
+
+    return buy_signals, sell_signals
