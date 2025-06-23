@@ -10,18 +10,27 @@ import hashlib
 import argparse
 from datetime import datetime
 import matplotlib.pyplot as plt
+from dotenv import load_dotenv  # ✅ 追加！
+
+# ✅ 環境変数の読み込み
+load_dotenv()
 
 from setup import JP_FONT
 from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
 from gyazo_uploader import upload_to_gyazo
-from slack_notifier import send_to_slack  # ✅ Slack通知用
+from slack_notifier import send_to_slack
 
 # ==============================
 # 設定
 # ==============================
 
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL") or "https://hooks.slack.com/services/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"
+# ==============================
+# 設定（.envから取得）
+# ==============================
+
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+GYAZO_ACCESS_TOKEN = os.getenv("GYAZO_ACCESS_TOKEN")
 
 # 🎯 コマンドライン引数に --upload, --slack を追加
 parser = argparse.ArgumentParser(description="株価チャート自動処理")
@@ -30,7 +39,6 @@ parser.add_argument("--slack", action="store_true", help="Slack通知を有効�
 args = parser.parse_args()
 ENABLE_GYAZO_UPLOAD = args.upload
 ENABLE_SLACK = args.slack
-GYAZO_ACCESS_TOKEN = "VbP8FQFvnNREgTPDnSSNTgNaOfVwS2DZOCZDmPMclYU"
 plt.rcParams['font.family'] = JP_FONT
 
 # ==============================

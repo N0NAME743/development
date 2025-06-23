@@ -3,6 +3,7 @@ matplotlib
 mplfinance
 openpyxl
 pandas
+python-dotenv
 ta
 tk
 yfinance
