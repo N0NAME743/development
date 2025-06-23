@@ -131,8 +131,6 @@ def main():
             if df is None or df.empty:
                 raise ValueError("データ取得失敗 or 空データ")
 
-            print(f"▶ {symbol} の取得後カラム: {df.columns.tolist()}")
-
             df = add_indicators(df)
             save_price_data(df, symbol, name) # ✅ SQLiteへの保存   
 
@@ -197,4 +195,6 @@ if __name__ == "__main__":
     uploaded_today = main()
     # オプション：アップロードした分をCSVにも保存
     if uploaded_today:
-        write_gyazo_csv(os.path.join("result", csv_filename), uploaded_today)
+        daily_folder = os.path.join("result", today_str)  # 例: result/2025-06-23/
+        csv_path = os.path.join(daily_folder, csv_filename)
+        write_gyazo_csv(csv_path, uploaded_today)

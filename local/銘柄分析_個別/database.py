@@ -28,7 +28,12 @@ def init_db():
             adx REAL,
             stoch_k REAL,
             senkou1 REAL,
-            senkou2 REAL
+            senkou2 REAL,
+            bb_upper REAL,     -- ✅ 追加
+            bb_middle REAL,    -- ✅ 中央線（＝移動平均）
+            bb_lower REAL,     -- ✅ 追加
+            kairi_25 REAL,     -- ✅ 25日乖離率を追加
+            atr REAL           -- ✅ ATRを追加
         )
         """)
         # ✅ インデックス作成
@@ -48,7 +53,10 @@ def save_price_data(df, symbol, name):
     cols = [c for c in df.columns if c in {
         "date", "symbol", "name", "Open", "High", "Low", "Close", "Volume",
         "MA5", "MA25", "MA75", "RSI", "MACD", "MACD_signal", "MACD_diff",
-        "ADX", "STOCH_K", "senkou1", "senkou2"
+        "ADX", "STOCH_K", "senkou1", "senkou2",
+        "BB_upper", "BB_middle", "BB_lower",  # ✅ 追加
+        "KAIRI_25",  # ✅ 追加
+        "ATR"  # ✅ 追加
     }]
     df = df[cols]
 

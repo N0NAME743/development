@@ -17,6 +17,9 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter
 
 #print("📄 このファイルは実行されています:", __file__)
 
+from ta.volatility import BollingerBands
+from ta.volatility import AverageTrueRange
+
 def add_indicators(df):
     df["MA5"] = df["Close"].rolling(5).mean()
     df["MA25"] = df["Close"].rolling(25).mean()
@@ -38,6 +41,16 @@ def add_indicators(df):
     df["kijun"] = (df["High"].rolling(26).max() + df["Low"].rolling(26).min()) / 2
     df["senkou1"] = ((df["tenkan"] + df["kijun"]) / 2).shift(26)
     df["senkou2"] = ((df["High"].rolling(52).max() + df["Low"].rolling(52).min()) / 2).shift(26)
+    # ✅ ボリンジャーバンド（20期間, 2σ）
+    bb = BollingerBands(close=df["Close"], window=20, window_dev=2)
+    df["BB_upper"] = bb.bollinger_hband()
+    df["BB_middle"] = bb.bollinger_mavg()
+    df["BB_lower"] = bb.bollinger_lband()
+    # ✅ 25日乖離率の計算
+    df["KAIRI_25"] = ((df["Close"] - df["MA25"]) / df["MA25"]) * 100
+    # ✅ ATR（14期間）
+    atr = AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14)
+    df["ATR"] = atr.average_true_range()
     return df
 
 def judge_dynamic_zones(latest):
