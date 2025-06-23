@@ -144,34 +144,35 @@ def notify_signal_alerts_from_uploaded(uploaded_today):
 
         buy_signals = signals.get("buy", [])
         sell_signals = signals.get("sell", [])
-
         total_signals = len(buy_signals) + len(sell_signals)
+
+        # Slack整形用関数
+        def format_entry(symbol, name, attention, label, signals):
+            return f"*{symbol}（{name}）: {attention}*\n💡指標 │ {label}：{ '、'.join(signals) }"
 
         # ✅ 買い優勢（買いシグナル3個以上）
         if len(buy_signals) >= 3:
-            summary = f"{symbol}（{name}）: {attention} | " + "、".join(buy_signals)
+            summary = format_entry(symbol, name, attention, "買い", buy_signals)
             buy_list.append(summary)
 
         # ✅ 売り優勢（売りシグナル3個以上）
         elif len(sell_signals) >= 3:
-            summary = f"{symbol}（{name}）: {attention} | " + "、".join(sell_signals)
+            summary = format_entry(symbol, name, attention, "売り", sell_signals)
             sell_list.append(summary)
 
-        # ✅ シグナル総数が多いが、判断が難しい場合（様子見扱い）
+        # ✅ シグナル混在（様子見）
         elif total_signals >= 4:
-            summary = f"{symbol}（{name}）: {attention} | "
-            parts = []
+            summary = f"{symbol}（{name}）: *{attention}*\n"
             if buy_signals:
-                parts.append("📈 " + "、".join(buy_signals))
+                summary += f"📈 買い：{ '、'.join(buy_signals) }\n"
             if sell_signals:
-                parts.append("📉 " + "、".join(sell_signals))
-            summary += " / ".join(parts)
+                summary += f"📉 売り：{ '、'.join(sell_signals) }"
             neutral_list.append(summary)
 
-    # ✅ 通知実行
-    send_signal_summary("📈 買いシグナル銘柄", buy_list)
-    send_signal_summary("📉 売りシグナル銘柄", sell_list)
-    send_signal_summary("🌀 シグナル混在（様子見）", neutral_list)
+    # ✅ Slack通知
+    send_signal_summary("📈 *買いシグナル銘柄*", buy_list)
+    send_signal_summary("📉 *売りシグナル銘柄*", sell_list)
+    send_signal_summary("🌀 *シグナル混在（様子見）*", neutral_list)
 
 # ==============================
 # メイン処理

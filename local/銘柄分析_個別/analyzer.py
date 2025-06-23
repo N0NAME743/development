@@ -105,18 +105,49 @@ def detect_weekly_low_break(df):
 
 # ==========================
 
-def analyze_signals(signals, adx_last):
-    # ✨注目度・コメント生成（簡略版）
-    if any("警戒" in s or "下抜" in s for s in signals):
-        attention = "売り優勢"
-        comment = ":warning: 売りシグナルが優勢です。調整に注意"
-    elif len(signals) >= 3:
+# analyzer.py の中などに追加
+def evaluate_signal_strength(signals_dict: dict) -> int:
+    score = 0
+
+    # 加点ルール（買い）
+    for sig in signals_dict.get("buy", []):
+        if "ゴールデン" in sig or "直近高値" in sig:
+            score += 3
+        elif "反発" in sig or "押し目" in sig or "切り上げ" in sig:
+            score += 2
+        else:
+            score += 1
+
+    # 減点ルール（売り）
+    for sig in signals_dict.get("sell", []):
+        if "陰転" in sig or "三連続陰線" in sig or "デッドクロス" in sig:
+            score -= 3
+        elif "過熱" in sig or "戻り売り" in sig or "切り下げ" in sig:
+            score -= 2
+        else:
+            score -= 1
+
+    return score  # -10 〜 +10 のスコアを想定
+
+def analyze_signals(signals: list[str], adx_last: float) -> tuple:
+    signal_dict = classify_signals(signals)
+    score = evaluate_signal_strength(signal_dict)
+
+    # 内部スコアに基づく attention 判定
+    if score >= 4:
         attention = "買い注目"
         comment = ":star: 買いシグナルが複数出現中"
+    elif score <= -3:
+        attention = "売り優勢"
+        comment = ":warning: 売りシグナルが優勢です。調整に注意"
+    elif score <= 1 and score >= -2:
+        attention = "様子見"
+        comment = "📊 シグナルが拮抗しています。判断に注意"
     else:
         attention = "様子見"
         comment = "中立圏です。シグナルは弱め"
-    return attention, comment, 0, ""
+
+    return attention, comment, score, str(score)
 
 def analyze_stock(df, info=None):
     if len(df) < 30:
@@ -200,5 +231,5 @@ def classify_signals(signals: list[str]) -> dict:
 def detect_spike_history(df, threshold=0.4):
     change = (df["Close"] - df["Close"].shift(1)) / df["Close"].shift(1)
     if (change.abs() > threshold).sum() >= 1:
-        return "⚠️ 過去に急騰／急落歴あり"
+        return "過去に急騰／急落歴あり" #⚠️
     return None
