@@ -46,7 +46,8 @@ plt.rcParams['font.family'] = JP_FONT
 # ==============================
 
 today_str = datetime.today().strftime('%Y-%m-%d')
-LOG_PATH_ALL = "result/gyazo_log.json"
+#LOG_PATH_ALL = "result/gyazo_log.json"
+LOG_PATH_ALL = f"result/gyazo_log_{datetime.today().year}.json" # 年ごとにログを分ける
 LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
 os.makedirs(os.path.dirname(LOG_PATH_ALL), exist_ok=True)
 os.makedirs(os.path.dirname(LOG_PATH_DAILY), exist_ok=True)

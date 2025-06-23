@@ -14,7 +14,9 @@ def get_symbols_from_excel():
         df.columns = df.columns.str.strip().str.lower()
         if "symbol" not in df.columns:
             raise ValueError("❌ 'symbol'列が見つかりません")
-        return df["symbol"].dropna().tolist()
+
+        # 数値を文字列化＋.T付加（既に.Tが付いていればそのまま）
+        return df["symbol"].dropna().astype(str).apply(lambda s: s if ".T" in s else f"{s}.T").tolist()
     except Exception as e:
         print(f"❌ Excel読み込み失敗: {e}")
         return []
