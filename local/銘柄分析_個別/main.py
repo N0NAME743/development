@@ -45,12 +45,16 @@ plt.rcParams['font.family'] = JP_FONT
 # 日付ベースの保存パス
 # ==============================
 
-today_str = datetime.today().strftime('%Y-%m-%d')
+today_str = datetime.today().strftime('%Y-%m-%d')      # 既存の日付（例：2025-06-23）
+today_compact = datetime.today().strftime('%Y%m%d')    # 新しい形式（例：20250623）
+
 #LOG_PATH_ALL = "result/gyazo_log.json"
-LOG_PATH_ALL = f"result/gyazo_log_{datetime.today().year}.json" # 年ごとにログを分ける
-LOG_PATH_DAILY = f"result/{today_str}/gyazo_log.json"
+LOG_PATH_ALL = f"result/signal_log_{datetime.today().year}.json" # 年ごとにログを分ける
+LOG_PATH_DAILY = f"result/{today_str}/signal_log_{today_compact}.json"
 os.makedirs(os.path.dirname(LOG_PATH_ALL), exist_ok=True)
 os.makedirs(os.path.dirname(LOG_PATH_DAILY), exist_ok=True)
+
+csv_filename = f"signal_chart_uploaded_{today_compact}.csv"  # today_str = 2025-06-23
 
 # ==============================
 # 補助関数群
@@ -75,10 +79,9 @@ def get_file_md5(file_path):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-def write_gyazo_csv(out_folder, entries):
-    out_path = os.path.join(out_folder, "gyazo_uploaded.csv")
-    file_exists = os.path.exists(out_path)
-    with open(out_path, mode='a', newline='', encoding='utf-8') as f:
+def write_gyazo_csv(csv_path, entries):
+    file_exists = os.path.exists(csv_path)
+    with open(csv_path, mode='a', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=["date", "symbol", "name", "hash", "url"])
         if not file_exists:
             writer.writeheader()
@@ -187,11 +190,15 @@ def main():
 
     out_folder = f"result/{today_str}"
     os.makedirs(out_folder, exist_ok=True)
-    write_gyazo_csv(out_folder, uploaded_today)
+
+    csv_filename = f"signal_chart_uploaded_{today_compact}.csv"
+    csv_path = os.path.join(out_folder, csv_filename)
+
+    write_gyazo_csv(csv_path, uploaded_today)
 
     print("━━━━━━━━━━━━━━━━━━━━")
     print(f"✅ 全銘柄処理完了（所要時間: {t_min}分{t_sec}秒）")
-    print(f"📄 CSV出力: {out_folder}/gyazo_uploaded.csv")
+    print(f"📄 CSV出力: {csv_path}")
 
 if __name__ == "__main__":
     main()
