@@ -1,8 +1,19 @@
+# ==============================
+# Sec｜database.py
+# ==============================
+
 import sqlite3
+import pandas as pd
 from pathlib import Path
 import os
 
 DB_PATH = Path("result/stock_data.db")
+
+def load_latest_data():
+    with sqlite3.connect(DB_PATH) as conn:
+        latest_date = pd.read_sql_query("SELECT MAX(date) as max_date FROM price_history", conn)["max_date"][0]
+        df = pd.read_sql_query(f"SELECT * FROM price_history WHERE date = '{latest_date}'", conn)
+    return df
 
 def init_db():
     os.makedirs(DB_PATH.parent, exist_ok=True)
@@ -54,21 +65,16 @@ def save_price_data(df, symbol, name):
         "date", "symbol", "name", "Open", "High", "Low", "Close", "Volume",
         "MA5", "MA25", "MA75", "RSI", "MACD", "MACD_signal", "MACD_diff",
         "ADX", "STOCH_K", "senkou1", "senkou2",
-        "BB_upper", "BB_middle", "BB_lower",  # ✅ 追加
-        "KAIRI_25",  # ✅ 追加
-        "ATR"  # ✅ 追加
+        "BB_upper", "BB_middle", "BB_lower",
+        "KAIRI_25", "ATR"
     }]
     df = df[cols]
-
-    # ✅ 列名をすべて小文字に統一
     df.columns = [c.lower() for c in df.columns]
-
-    # ✅ 重複行を除去（同一銘柄・同一日）
     df = df.drop_duplicates(subset=["symbol", "date"])
 
-    # ✅ SQLiteに追記
+    # ✅ 保存
     with sqlite3.connect(DB_PATH) as conn:
         df.to_sql("price_history", conn, if_exists="append", index=False)
 
-    print(f"|{len(df)}件DBに登録 ({symbol})")
+    return len(df)  # ← ✅ 登録件数を返す
 

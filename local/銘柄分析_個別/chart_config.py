@@ -11,14 +11,12 @@ import pandas as pd
 from datetime import datetime
 from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.trend import MACD, ADXIndicator
+from ta.volatility import AverageTrueRange
 from ta.volatility import BollingerBands
 from matplotlib import rcParams
 from matplotlib.ticker import ScalarFormatter, FuncFormatter
 
 #print("📄 このファイルは実行されています:", __file__)
-
-from ta.volatility import BollingerBands
-from ta.volatility import AverageTrueRange
 
 def add_indicators(df):
     df["MA5"] = df["Close"].rolling(5).mean()
@@ -617,6 +615,8 @@ def plot_chart(df, symbol, name):
     os.makedirs(folder_name, exist_ok=True)  # フォルダがなければ作成
 
     # 🖼 保存ファイル名（例: chart_2385_2025-06-21.png）
+    import re
+    safe_name = re.sub(r'[\\/*?:"<>|]', '_', name)
     #file_name = f"chart_{symbol}_{today_str}.png"
     file_name = f"chart_{symbol}_{name}_{today_str}.png"
     save_path = os.path.join(folder_name, file_name)
@@ -624,7 +624,7 @@ def plot_chart(df, symbol, name):
     # 💾 保存
     fig.savefig(save_path)
     #print(f"📈 Saved with MA, S/R lines, and Ichimoku Cloud (filled): {save_path}")
-    print(f"📈 {save_path}")
+    #print(f"📈 {save_path}")
     plt.close(fig)  # ✅ メモリリーク防止
 
     signals = analyze_signals(df_recent)  
