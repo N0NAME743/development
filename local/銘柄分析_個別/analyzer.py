@@ -134,17 +134,20 @@ def analyze_signals(signals: list[str], adx_last: float) -> tuple:
 
     # 内部スコアに基づく attention 判定
     if score >= 4:
-        attention = "買い注目"
-        comment = ":star: 買いシグナルが複数出現中"
+        attention = "強い買い"
+        comment = "★ 買いタイミングが揃っています。チャンスに注目。"
     elif score <= -3:
-        attention = "売り優勢"
-        comment = ":warning: 売りシグナルが優勢です。調整に注意"
-    elif score <= 1 and score >= -2:
-        attention = "様子見"
-        comment = "📊 シグナルが拮抗しています。判断に注意"
+        attention = "強い売り"
+        comment = "⚠️ 売り圧力が高まっています。利確・調整に注意。"
+    elif score >= 2:
+        attention = "打診買い"
+        comment = "🔍 やや買い寄り。慎重に押し目を狙いたい場面。"
+    elif score <= -2:
+        attention = "打診売り"
+        comment = "🔻 やや下落傾向。戻り売りに注意。"
     else:
-        attention = "様子見"
-        comment = "中立圏です。シグナルは弱め"
+        attention = "判断保留"
+        comment = "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。"
 
     return attention, comment, score, str(score)
 

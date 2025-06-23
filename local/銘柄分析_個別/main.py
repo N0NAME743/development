@@ -21,7 +21,7 @@ from setup import JP_FONT
 from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
 from gyazo_uploader import upload_to_gyazo
-from slack_notifier import send_signal_summary, notify_signal_alerts_from_uploaded, send_to_slack  # ✅ Slack通知
+from slack_notifier import notify_signal_alerts_from_uploaded  # ✅ Slack通知
 from database import load_latest_data, init_db, save_price_data  # ✅ SQLite対応
 from analyzer import analyze_stock, classify_signals, detect_signals  # ✅ 分析・シグナル検出
 
@@ -34,7 +34,6 @@ plt.rcParams["font.family"] = JP_FONT
 
 # ✅ 環境変数を読み込む（.envファイル）
 load_dotenv()
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 GYAZO_ACCESS_TOKEN = os.getenv("GYAZO_ACCESS_TOKEN")
 
 # ✅ SQLite データベース初期化
@@ -152,14 +151,23 @@ def main():
                 print(f"\n▶ 処理中: {symbol} │ {idx}/{total}件中／残り: {mins}分{secs}秒")
                 print(f"📈 チャート画像: {image_path}")
                 print("⏭ すでにアップロード済み")
+
+                # Slack通知スキップ理由を明示
                 if ENABLE_SLACK:
                     print(f"🚫 Slack通知スキップ（すでにアップロード済み: {symbol}）")
                 else:
                     print("🚫 Slack通知スキップ（--slack未指定）")
-                print("🚫 Gyazoスキップ（--upload未指定）")
+
+                # Gyazoアップロードスキップ理由を明示
+                if ENABLE_GYAZO_UPLOAD:
+                    print("⏭ Gyazoアップロード：スキップ（すでにアップロード済み）")
+                else:
+                    print("🚫 Gyazoスキップ（--upload未指定）")
+
+                # DB登録スキップ理由
                 print("🗃️ DB登録: スキップ（アップロード済）")
 
-                continue  # ← ログだけ出したあとにスキップ
+                continue  # スキップして次の銘柄へ
 
             # ✅ 新規アップロード
             gyazo_url = None
@@ -183,24 +191,6 @@ def main():
             append_upload_log_json(LOG_PATH_ALL, log_data_all, new_entry)
             append_upload_log_json(LOG_PATH_DAILY, log_data_daily, new_entry)
             uploaded_today.append(new_entry)
-
-            # ✅ Slack通知（新規のみ）
-            if ENABLE_SLACK:
-                signal_lines = []
-                if signals.get("buy"):
-                    signal_lines.append(f"📈 買い: {', '.join(signals['buy'])}")
-                if signals.get("sell"):
-                    signal_lines.append(f"📉 売り: {', '.join(signals['sell'])}")
-                if signals.get("neutral"):
-                    signal_lines.append(f"⚪ 中立: {', '.join(signals['neutral'])}")
-                
-                signal_summary = "\n".join(signal_lines)
-
-                msg = f"*{name} ({symbol})*\n{comment}\n{signal_summary}\n📸 {gyazo_url or '画像なし'}"
-                time.sleep(1)
-                send_to_slack(SLACK_WEBHOOK_URL, msg)
-            else:
-                print("🚫 Slack通知スキップ（--slack未指定）")
 
             # ✅ 進捗表示
             elapsed = time.time() - t0
@@ -243,20 +233,24 @@ if __name__ == "__main__":
     notify_signal_alerts_from_uploaded(uploaded_today)
 
     # === JSON → CSV出力部分（uploaded_today関係なく常に実行） ===
-    # 📁 保存先フォルダ（today_str = '2025-06-23' 形式）
     daily_folder = os.path.join("result", today_str)
     os.makedirs(daily_folder, exist_ok=True)
 
-    # ✅ ファイル名は today_compact = '20250623'
+    # 🔧 事前初期化（エラー回避用）
+    buy_csv_path = ""
+    sell_csv_path = ""
+    buy_entries = []
+    sell_entries = []
+
     log_json_path = os.path.join(daily_folder, f"signal_log_{today_compact}.json")
 
-    # ✅ JSONがあれば読み込み、なければ uploaded_today から作る
+    # ✅ JSONがあれば読み込み、なければ uploaded_today から作成
     if os.path.exists(log_json_path):
         with open(log_json_path, "r", encoding="utf-8") as f:
             all_entries = json.load(f)
         print(f"📥 既存のJSONログを読み込み: {log_json_path}")
 
-        # ✅ 重複除去ここに入れる！
+        # ✅ 重複除去（symbol＋date）
         unique_entries = {}
         for e in all_entries:
             key = (e["symbol"], e["date"])
@@ -273,10 +267,10 @@ if __name__ == "__main__":
         print("⚠️ JSONログが存在せず、uploaded_today も空のため、出力をスキップします。")
         all_entries = []
 
-    # ✅ 出力実行（中身があれば）
+    # ✅ CSV出力処理
     if all_entries:
         def format_csv_rows(entries):
-            return [{
+            return [ {
                 "symbol": e["symbol"],
                 "name": e["name"],
                 "date": e["date"],
@@ -286,7 +280,7 @@ if __name__ == "__main__":
                 "signals_sell": "、".join(e["signals"].get("sell", [])),
                 "gyazo_url": e.get("gyazo_url", ""),
                 "image_path": e.get("image_path", "")
-            } for e in entries]
+            } for e in entries ]
 
         buy_entries = [e for e in all_entries if "買い" in e.get("attention", "")]
         sell_entries = [e for e in all_entries if "売り" in e.get("attention", "")]
@@ -302,12 +296,10 @@ if __name__ == "__main__":
     else:
         print("⚠️ 出力対象のデータが空です。CSV出力はスキップされました。")
 
+    # ✅ Slack通知（ファイル添付付き：Bot連携）
     from slack_notifier import send_summary_with_files
 
-    # 出力完了後に追加：
-    if all_entries:
-        ...
-        # 通知送信
+    if ENABLE_SLACK and (buy_entries or sell_entries):
         send_summary_with_files(
             buy_csv_path=buy_csv_path,
             sell_csv_path=sell_csv_path,
@@ -315,3 +307,7 @@ if __name__ == "__main__":
             sell_count=len(sell_entries),
             date_str=today_str
         )
+    else:
+        print("🚫 Slack通知（添付付き）スキップ：--slack未指定 or データなし")
+
+
