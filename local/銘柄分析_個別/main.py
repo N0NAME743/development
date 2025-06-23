@@ -1,7 +1,8 @@
 # ==============================
-# main.py｜Gyazoアップロード + JSONログ + CSV出力 + Slack通知 + 進捗表示
+# main.py｜チャート処理・データ保存・通知（Gyazo / Slack / DB対応）
 # ==============================
 
+# 標準ライブラリ
 import os
 import json
 import csv
@@ -9,37 +10,44 @@ import time
 import hashlib
 import argparse
 from datetime import datetime
+
+# サードパーティライブラリ
 import matplotlib.pyplot as plt
-from dotenv import load_dotenv  # ✅ 追加！
+from dotenv import load_dotenv  # ✅ .envから環境変数を読み込み
 
-# ✅ 環境変数の読み込み
-load_dotenv()
-
+# 自作モジュール（プロジェクト内）
 from setup import JP_FONT
 from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
 from gyazo_uploader import upload_to_gyazo
 from slack_notifier import send_to_slack
+from database import init_db, save_price_data  # ✅ SQLite対応
 
 # ==============================
-# 設定
+# 初期設定
 # ==============================
 
-# ==============================
-# 設定（.envから取得）
-# ==============================
+# ✅ フォント設定（matplotlib用）
+plt.rcParams["font.family"] = JP_FONT
 
+# ✅ 環境変数を読み込む（.envファイル）
+load_dotenv()
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 GYAZO_ACCESS_TOKEN = os.getenv("GYAZO_ACCESS_TOKEN")
 
-# 🎯 コマンドライン引数に --upload, --slack を追加
+# ✅ SQLite データベース初期化
+init_db()
+
+# ==============================
+# 引数設定（コマンドライン用）
+# ==============================
+
 parser = argparse.ArgumentParser(description="株価チャート自動処理")
-parser.add_argument("--upload", action="store_true", help="Gyazoにアップロードする")
+parser.add_argument("--upload", action="store_true", help="Gyazoアップロードを有効にする")
 parser.add_argument("--slack", action="store_true", help="Slack通知を有効にする")
 args = parser.parse_args()
 ENABLE_GYAZO_UPLOAD = args.upload
 ENABLE_SLACK = args.slack
-plt.rcParams['font.family'] = JP_FONT
 
 # ==============================
 # 日付ベースの保存パス
@@ -120,35 +128,32 @@ def main():
 
         try:
             df, name = fetch_stock_data(symbol)
-            if df is None:
-                raise ValueError("データ取得失敗")
+            if df is None or df.empty:
+                raise ValueError("データ取得失敗 or 空データ")
+
+            print(f"▶ {symbol} の取得後カラム: {df.columns.tolist()}")
 
             df = add_indicators(df)
+            save_price_data(df, symbol, name) # ✅ SQLiteへの保存   
+
             image_path, signals, signal_comment = plot_chart(df, symbol, name)
             image_hash = get_file_md5(image_path)
 
-            # ✅ アップロード済みの場合 → Slack通知だけ送る
+            # ✅ アップロード済みの場合はスキップ
             if image_hash in uploaded_hashes:
                 print(" ⏭ すでにアップロード済み")
-
-                # Slack通知は新規アップロード時だけにしたいのでここは無効化
                 if ENABLE_SLACK:
                     print(f"🚫 Slack通知スキップ（すでにアップロード済み: {symbol}）")
-                    #matched = next((entry for entry in log_data_all if entry["hash"] == image_hash), None)
-                    #if matched:
-                    #    msg = f"*📈 {matched['name']} ({matched['symbol']})*\n{matched['comment']}\n📸 {matched['gyazo_url'] or '画像なし'}"
-                    #    time.sleep(1)  # ← Slackは1秒間隔で安全
-                    #  send_to_slack(SLACK_WEBHOOK_URL, msg)
-
                 continue
 
-            # ✅ 新規アップロード処理
+            # ✅ 新規アップロード
             gyazo_url = None
             if ENABLE_GYAZO_UPLOAD:
                 desc = f"{symbol} {name} の株価チャート（{today_str}）"
-                time.sleep(1)  # ← Gyazo側のレートリミット回避
+                time.sleep(1)
                 gyazo_url = upload_to_gyazo(image_path, GYAZO_ACCESS_TOKEN, desc=desc)
 
+            # ✅ ログ追記
             new_entry = {
                 "symbol": symbol,
                 "name": name,
@@ -160,19 +165,19 @@ def main():
                 "comment": signal_comment,
                 "signals": signals
             }
-
             append_upload_log_json(LOG_PATH_ALL, log_data_all, new_entry)
             append_upload_log_json(LOG_PATH_DAILY, log_data_daily, new_entry)
             uploaded_today.append(new_entry)
 
-            # ✅ Slack通知（新規アップロード時も送信）
+            # ✅ Slack通知（新規のみ）
             if ENABLE_SLACK:
                 msg = f"*📈 {name} ({symbol})*\n{signal_comment}\n📸 {gyazo_url or '画像なし'}"
-                time.sleep(1)  # ← Slackは1秒間隔で安全
+                time.sleep(1)
                 send_to_slack(SLACK_WEBHOOK_URL, msg)
             else:
                 print("🚫 Slack通知スキップ（--slack未指定）")
 
+            # ✅ 進捗表示
             elapsed = time.time() - t0
             remaining = elapsed * (total - idx)
             mins, secs = divmod(int(remaining), 60)
@@ -185,20 +190,11 @@ def main():
         except Exception as e:
             print(f"\n❌ エラー発生: {symbol} - {e}")
 
-    total_time = time.time() - start_time
-    t_min, t_sec = divmod(int(total_time), 60)
-
-    out_folder = f"result/{today_str}"
-    os.makedirs(out_folder, exist_ok=True)
-
-    csv_filename = f"signal_chart_uploaded_{today_compact}.csv"
-    csv_path = os.path.join(out_folder, csv_filename)
-
-    write_gyazo_csv(csv_path, uploaded_today)
-
-    print("━━━━━━━━━━━━━━━━━━━━")
-    print(f"✅ 全銘柄処理完了（所要時間: {t_min}分{t_sec}秒）")
-    print(f"📄 CSV出力: {csv_path}")
+    print("✅ 全銘柄処理完了（所要時間: {:.1f}秒）".format(time.time() - start_time))
+    return uploaded_today
 
 if __name__ == "__main__":
-    main()
+    uploaded_today = main()
+    # オプション：アップロードした分をCSVにも保存
+    if uploaded_today:
+        write_gyazo_csv(os.path.join("result", csv_filename), uploaded_today)
