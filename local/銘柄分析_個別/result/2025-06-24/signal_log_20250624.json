@@ -1,13 +1,751 @@
 [
   {
+    "symbol": "9237.T",
+    "name": "EMIMEN CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:13:13",
+    "image_path": "output/2025-06-24\\chart_9237.T_EMIMEN CO LTD_2025-06-24.png",
+    "gyazo_url": "https://i.gyazo.com/fc88a4183184ab104288e834c51ff63b.png",
+    "hash": "fc88a4183184ab104288e834c51ff63b",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
+    "signals": {
+      "buy": [
+        "直近高値突破",
+        "押し目陽線",
+        "上昇トレンドライン反発",
+        "下値切り上げ継続"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9973.T",
+    "name": "KOZO HOLDINGS CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:13:21",
+    "image_path": "output/2025-06-24\\chart_9973.T_KOZO HOLDINGS CO LTD_2025-06-24.png",
+    "gyazo_url": "https://i.gyazo.com/b6f833c2cb14358d9f6a0be9af9731f1.png",
+    "hash": "b6f833c2cb14358d9f6a0be9af9731f1",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "190A.T",
+    "name": "CHORDIA THERAPEUTICS INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:35",
+    "image_path": "output/2025-06-24\\chart_190A.T_CHORDIA THERAPEUTICS INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "313100f849d7aa95f194f2c4722604cf",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "直近安値割れ",
+        "戻り売り陰線",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "2673.T",
+    "name": "YUMEMITSUKETAI CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:38",
+    "image_path": "output/2025-06-24\\chart_2673.T_YUMEMITSUKETAI CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "4645810aa05c91ea56c6ac52c42cbb87",
+    "attention": "判断保留",
+    "comment": "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。",
+    "signals": {
+      "buy": [],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "2930.T",
+    "name": "KITANOTATSUJIN CORP",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:41",
+    "image_path": "output/2025-06-24\\chart_2930.T_KITANOTATSUJIN CORP_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "aae8ed0b60822ba0a3f4667313d6e928",
+    "attention": "判断保留",
+    "comment": "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。",
+    "signals": {
+      "buy": [],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "3664.T",
+    "name": "MOBCAST HLDGS INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:43",
+    "image_path": "output/2025-06-24\\chart_3664.T_MOBCAST HLDGS INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "8a2138f0ca2ea5b5c7470eb41177fdb3",
+    "attention": "判断保留",
+    "comment": "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "3667.T",
+    "name": "ENISH INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:45",
+    "image_path": "output/2025-06-24\\chart_3667.T_ENISH INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "e498cafa2086bf74c3ec11e3c833ba8e",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [
+        "高値切り下げ継続",
+        "三連続陰線（弱気連続）"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "3672.T",
+    "name": "ALTPLUSINC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:47",
+    "image_path": "output/2025-06-24\\chart_3672.T_ALTPLUSINC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "e7b61730a36341895ce8cd929a62fb86",
+    "attention": "判断保留",
+    "comment": "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [
+        "過去に急騰／急落歴あり",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "3760.T",
+    "name": "CAVE INTERACTIVE CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:50",
+    "image_path": "output/2025-06-24\\chart_3760.T_CAVE INTERACTIVE CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "452e877f69452908dbef5406145ee2e3",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "3968.T",
+    "name": "SEGUE GROUP CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:53",
+    "image_path": "output/2025-06-24\\chart_3968.T_SEGUE GROUP CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "b384ac0aa9892e6ab2de71f16b744550",
+    "attention": "打診売り",
+    "comment": "🔻 やや下落傾向。戻り売りに注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
     "symbol": "5255.T",
     "name": "MONSTARLAB INC",
     "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:32:57",
     "image_path": "output/2025-06-24\\chart_5255.T_MONSTARLAB INC_2025-06-24.png",
-    "gyazo_url": "https://i.gyazo.com/ffd68e69180623c90413dc8375db6d00.png",
-    "hash": "ffd68e69180623c90413dc8375db6d00",
-    "attention": "買い注目",
-    "comment": ":star: 買いシグナルが複数出現中",
+    "gyazo_url": null,
+    "hash": "0dedc11a42c94128bd736c4c5471dbbc",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
+    "signals": {
+      "buy": [
+        "直近高値突破",
+        "押し目陽線",
+        "上昇トレンドライン反発",
+        "下値切り上げ継続"
+      ],
+      "sell": [
+        "RSI反落（過熱から下降）"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "5721.T",
+    "name": "S-SCIENCE COMPANY LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:33:03",
+    "image_path": "output/2025-06-24\\chart_5721.T_S-SCIENCE COMPANY LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "6d226336f26235f9b6edcfa3c5e30960",
+    "attention": "判断保留",
+    "comment": "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [
+        "過去に急騰／急落歴あり",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "6177.T",
+    "name": "APPBANK INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:33:06",
+    "image_path": "output/2025-06-24\\chart_6177.T_APPBANK INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "4bb56c9440eea5557236b4215b104f75",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "過去に急騰／急落歴あり",
+        "戻り売り陰線",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "6573.T",
+    "name": "AGILE MEDIA NETWORK INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:33:09",
+    "image_path": "output/2025-06-24\\chart_6573.T_AGILE MEDIA NETWORK INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "ea72992575b19d1d0bdd03f42a8f20a2",
+    "attention": "判断保留",
+    "comment": "📊 シグナルが拮抗しており方向感に欠けます。様子見も視野に。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [
+        "過去に急騰／急落歴あり",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9227.T",
+    "name": "MICROWAVE CHEMICAL CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:33:12",
+    "image_path": "output/2025-06-24\\chart_9227.T_MICROWAVE CHEMICAL CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "8cf0b33ab32d872438302ffbd9941d9d",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9348.T",
+    "name": "ISPACE INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T11:33:20",
+    "image_path": "output/2025-06-24\\chart_9348.T_ISPACE INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "9f9f4befd7dfa427821d20d8fff1ba1f",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8551.T",
+    "name": "KITA-NIPPON BANK",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:41",
+    "image_path": "output/2025-06-24\\chart_8551.T_KITA-NIPPON BANK_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "592b44891253255d4268ea3ee3347efa",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8522.T",
+    "name": "BANK OF NAGOYA",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:45",
+    "image_path": "output/2025-06-24\\chart_8522.T_BANK OF NAGOYA_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "5aa55440a1a31110223799bc01923501",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8524.T",
+    "name": "NORTH PACIFIC BANK LIMITED",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:47",
+    "image_path": "output/2025-06-24\\chart_8524.T_NORTH PACIFIC BANK LIMITED_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "8e020d66634776b81876d7be8f01d255",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8570.T",
+    "name": "AEON FINANCIAL SERVICE CO LIMIT",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:50",
+    "image_path": "output/2025-06-24\\chart_8570.T_AEON FINANCIAL SERVICE CO LIMIT_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "53b2151e753e916534e6f0a4c5151a72",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8544.T",
+    "name": "KEIYO BANK",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:52",
+    "image_path": "output/2025-06-24\\chart_8544.T_KEIYO BANK_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "45843a4b9e221d9f7b7cc0eb280f066f",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
+    "signals": {
+      "buy": [
+        "直近高値突破",
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": [
+        "期間内高値更新（要注目）"
+      ]
+    }
+  },
+  {
+    "symbol": "8541.T",
+    "name": "EHIME BANK",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:55",
+    "image_path": "output/2025-06-24\\chart_8541.T_EHIME BANK_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "e61509b5cd1d5495ce57b46115e9412e",
+    "attention": "打診売り",
+    "comment": "🔻 やや下落傾向。戻り売りに注意。",
+    "signals": {
+      "buy": [
+        "MACD陽転"
+      ],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8584.T",
+    "name": "JACCS CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:30:57",
+    "image_path": "output/2025-06-24\\chart_8584.T_JACCS CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "27a28f29aababa89811b2a1ae47aced4",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8558.T",
+    "name": "TOWA BANK",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:00",
+    "image_path": "output/2025-06-24\\chart_8558.T_TOWA BANK_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "99f8e4dc2e29c068b37305c3e8ba2d06",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8566.T",
+    "name": "RICOH LEASING CO",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:03",
+    "image_path": "output/2025-06-24\\chart_8566.T_RICOH LEASING CO_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "575949171a647ffaf346a1147c99beae",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "三連続陰線（弱気連続）"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8550.T",
+    "name": "TOCHIGI BANK",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:05",
+    "image_path": "output/2025-06-24\\chart_8550.T_TOCHIGI BANK_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "1434ca0a63dd3b8aa618d1efa4da6364",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8860.T",
+    "name": "FUJI CORPORATION LIMITED",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:08",
+    "image_path": "output/2025-06-24\\chart_8860.T_FUJI CORPORATION LIMITED_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "4dbd52b4959e4401a7044447d8cf4e9f",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "三連続陰線（弱気連続）"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8881.T",
+    "name": "NISSHIN GROUP HLDGS CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:10",
+    "image_path": "output/2025-06-24\\chart_8881.T_NISSHIN GROUP HLDGS CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "ba0c1aa213a2d78d4af6d2a9a6730628",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8892.T",
+    "name": "ES-CON JAPAN LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:13",
+    "image_path": "output/2025-06-24\\chart_8892.T_ES-CON JAPAN LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "db2846a429e8ca82cd7538c71a301c24",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8850.T",
+    "name": "STARTS CORPORATION",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:16",
+    "image_path": "output/2025-06-24\\chart_8850.T_STARTS CORPORATION_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "fd9cecf308a31fabcc01457e30249cfe",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
+    "signals": {
+      "buy": [
+        "押し目陽線",
+        "上昇トレンドライン反発",
+        "下値切り上げ継続"
+      ],
+      "sell": [
+        "RSI過熱"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8864.T",
+    "name": "AIRPORT FACILITIES CO",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:18",
+    "image_path": "output/2025-06-24\\chart_8864.T_AIRPORT FACILITIES CO_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "85a10b08c0bd2bfef39ea6d27dd51f88",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8897.T",
+    "name": "MIRARTH HOLDINGS INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:21",
+    "image_path": "output/2025-06-24\\chart_8897.T_MIRARTH HOLDINGS INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "86bfe0900900a9bff9493f418fc5f05a",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "三連続陰線（弱気連続）"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8877.T",
+    "name": "ESLEAD CORPORATION",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:24",
+    "image_path": "output/2025-06-24\\chart_8877.T_ESLEAD CORPORATION_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "8386ff3354190e5d82217905e8d8f959",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
+    "signals": {
+      "buy": [
+        "押し目陽線",
+        "下値切り上げ継続"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8876.T",
+    "name": "RELO GROUP INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:27",
+    "image_path": "output/2025-06-24\\chart_8876.T_RELO GROUP INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "e48ca2b8466b6bd226d26a06a6a25769",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "8848.T",
+    "name": "LEOPALACE 21 CORP",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:30",
+    "image_path": "output/2025-06-24\\chart_8848.T_LEOPALACE 21 CORP_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "916e6411b87fb3040663906a3ca3a4d2",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "三連続陰線（弱気連続）"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9248.T",
+    "name": "PEOPLE DREAMS & TECHNOLOGIES GR",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:32",
+    "image_path": "output/2025-06-24\\chart_9248.T_PEOPLE DREAMS & TECHNOLOGIES GR_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "8dfea95536fb274b669e79700c8ced64",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9216.T",
+    "name": "BEWITH INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:35",
+    "image_path": "output/2025-06-24\\chart_9216.T_BEWITH INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "75e178d9e07247a40097f41e65fcc6ae",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9201.T",
+    "name": "JAPAN AIRLINES CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:37",
+    "image_path": "output/2025-06-24\\chart_9201.T_JAPAN AIRLINES CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "90ddb2238e6bebae4d520c861ee19078",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9147.T",
+    "name": "NIPPON EXPRESS HLDGS INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:40",
+    "image_path": "output/2025-06-24\\chart_9147.T_NIPPON EXPRESS HLDGS INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "8f62ce842fe47ca20646a75b17bd1086",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
     "signals": {
       "buy": [
         "直近高値突破",
@@ -15,6 +753,122 @@
         "上昇トレンドライン反発"
       ],
       "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9247.T",
+    "name": "TRE HLDGS CORP",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:43",
+    "image_path": "output/2025-06-24\\chart_9247.T_TRE HLDGS CORP_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "eaf833af5c91d708ad21f9f73e01b756",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9119.T",
+    "name": "IINO KAIUN KAISHA",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:45",
+    "image_path": "output/2025-06-24\\chart_9119.T_IINO KAIUN KAISHA_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "564627048b89404579da2c8ff392a7ed",
+    "attention": "打診買い",
+    "comment": "🔍 やや買い寄り。慎重に押し目を狙いたい場面。",
+    "signals": {
+      "buy": [
+        "押し目陽線"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9143.T",
+    "name": "SG HOLDINGS CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:48",
+    "image_path": "output/2025-06-24\\chart_9143.T_SG HOLDINGS CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "f21fb0f313eed8e34dd85fe9b877e870",
+    "attention": "強い買い",
+    "comment": "★ 買いタイミングが揃っています。チャンスに注目。",
+    "signals": {
+      "buy": [
+        "中期ゴールデンクロス",
+        "押し目陽線",
+        "下値切り上げ継続"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9202.T",
+    "name": "ANA HOLDINGS INC",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:50",
+    "image_path": "output/2025-06-24\\chart_9202.T_ANA HOLDINGS INC_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "7f51c2c0e39384d36d9b714633bbad3c",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9229.T",
+    "name": "SUNWELS CO LTD",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:53",
+    "image_path": "output/2025-06-24\\chart_9229.T_SUNWELS CO LTD_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "08ef30c73c860afd3fb8f8d3a617dbef",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "高値切り下げ継続"
+      ],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "9142.T",
+    "name": "KYUSHU RAILWAY COMPANY",
+    "date": "2025-06-24",
+    "updated_at": "2025-06-24T14:31:56",
+    "image_path": "output/2025-06-24\\chart_9142.T_KYUSHU RAILWAY COMPANY_2025-06-24.png",
+    "gyazo_url": null,
+    "hash": "b2d376f93486704b18e7c8eb5321fbbd",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線",
+        "下降トレンドライン割れ"
+      ],
       "neutral": []
     }
   }

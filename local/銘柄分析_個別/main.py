@@ -20,7 +20,7 @@ from dotenv import load_dotenv  # ✅ .envから環境変数を読み込み
 from setup import JP_FONT
 from stock_data import get_symbols_from_excel, fetch_stock_data
 from chart_config import add_indicators, plot_chart
-from gyazo_uploader import upload_to_gyazo
+from gyazo_uploader import GyazoUploader
 from slack_notifier import notify_signal_alerts_from_uploaded  # ✅ Slack通知
 from database import load_latest_data, init_db, save_price_data  # ✅ SQLite対応
 from analyzer import analyze_stock, classify_signals, detect_signals  # ✅ 分析・シグナル検出
@@ -77,7 +77,22 @@ def load_uploaded_hashes_json(log_path):
         return set(entry["hash"] for entry in data), data
 
 def append_upload_log_json(log_path, log_data, new_entry):
+    """
+    同一の symbol, date, name を持つエントリが存在する場合は、古いものを削除して新しいエントリを追加。
+    """
+    # 一意な識別キー（symbol + date + name）で重複判定
+    unique_key = (new_entry["symbol"], new_entry["date"], new_entry["name"])
+    # 重複エントリを削除（破壊的変更）
+    log_data[:] = [
+        e for e in log_data
+        if (e.get("symbol"), e.get("date"), e.get("name")) != unique_key
+    ]
+    # 更新日時も記録（任意）
+    from datetime import datetime
+    new_entry["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    # 新しいエントリを追加
     log_data.append(new_entry)
+    # JSONファイルに書き込み
     with open(log_path, 'w', encoding='utf-8') as f:
         json.dump(log_data, f, ensure_ascii=False, indent=2)
 
@@ -108,6 +123,7 @@ def write_gyazo_csv(csv_path, entries):
 # ==============================
 
 def main():
+    uploader = GyazoUploader()  # ← 追加！
     symbols = get_symbols_from_excel()
     total = len(symbols)
     uploaded_hashes, log_data_all = load_uploaded_hashes_json(LOG_PATH_ALL)
@@ -150,13 +166,6 @@ def main():
 
                 print(f"\n▶ 処理中: {symbol} │ {idx}/{total}件中／残り: {mins}分{secs}秒")
                 print(f"📈 チャート画像: {image_path}")
-                print("⏭ すでにアップロード済み")
-
-                # Slack通知スキップ理由を明示
-                if ENABLE_SLACK:
-                    print(f"🚫 Slack通知スキップ（すでにアップロード済み: {symbol}）")
-                else:
-                    print("🚫 Slack通知スキップ（--slack未指定）")
 
                 # Gyazoアップロードスキップ理由を明示
                 if ENABLE_GYAZO_UPLOAD:
@@ -169,18 +178,18 @@ def main():
 
                 continue  # スキップして次の銘柄へ
 
-            # ✅ 新規アップロード
+            # ✅ 新規アップロード（堅牢版）
             gyazo_url = None
             if ENABLE_GYAZO_UPLOAD:
                 desc = f"{symbol} {name} の株価チャート（{today_str}）"
-                time.sleep(1)
-                gyazo_url = upload_to_gyazo(image_path, GYAZO_ACCESS_TOKEN, desc=desc)
+                gyazo_url = uploader.upload(image_path, desc=desc)
 
             # ✅ ログ追記
             new_entry = {
                 "symbol": symbol,
                 "name": name,
                 "date": today_str,
+                "updated_at":datetime.now().isoformat(timespec="seconds"),
                 "image_path": image_path,
                 "gyazo_url": gyazo_url,
                 "hash": image_hash,
@@ -201,19 +210,17 @@ def main():
             print(f"\n▶ 処理中: {symbol} │ {idx}/{total}件中／残り: {mins}分{secs}秒")
             # 📈 チャート出力ログ（重複除去）
             print(f"📈 チャート画像: {image_path}")
-            # 🚫 Slack通知
-            if ENABLE_SLACK:
-                print("✅ Slack通知送信済み")
-            else:
-                print("🚫 Slack通知スキップ（--slack未指定）")
             # 🚫 Gyazo通知
             if ENABLE_GYAZO_UPLOAD:
                 print(f"✅ Gyazoアップロード: {gyazo_url or '❌'}")
             else:
                 print("🚫 Gyazoスキップ（--upload未指定）")
             # 🗃️ DB登録ログ（仮に件数を決め打ちしていたらそのまま）
-            count = save_price_data(df, symbol, name)
-            print(f"🗃️ DB登録: {count}件 ({symbol})")
+            result = save_price_data(df, symbol, name)
+            if result["status"] == "inserted":
+                print(f"🗃️ DB登録: {result['count']}件 ({symbol})")
+            else:
+                print(f"🗃️ DB登録スキップ: ({symbol})（すでに登録済）")
 
         except Exception as e:
             print(f"\n❌ エラー発生: {symbol} - {e}")
@@ -309,5 +316,4 @@ if __name__ == "__main__":
         )
     else:
         print("🚫 Slack通知（添付付き）スキップ：--slack未指定 or データなし")
-
 

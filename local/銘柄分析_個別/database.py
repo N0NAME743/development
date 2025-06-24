@@ -72,9 +72,27 @@ def save_price_data(df, symbol, name):
     df.columns = [c.lower() for c in df.columns]
     df = df.drop_duplicates(subset=["symbol", "date"])
 
-    # ✅ 保存
+    # ✅ 保存前に現在DBにあるデータを読み込んで差分をとる
+    import sqlite3
+    from pathlib import Path
+
+    DB_PATH = Path("result/stock_data.db")
+
     with sqlite3.connect(DB_PATH) as conn:
-        df.to_sql("price_history", conn, if_exists="append", index=False)
+        # 現在のDBに存在するsymbol+dateの組み合わせを取得
+        existing = pd.read_sql_query("""
+            SELECT symbol, date FROM price_history WHERE symbol = ?;
+        """, conn, params=(symbol,))
+        existing_keys = set(zip(existing["symbol"], existing["date"]))
 
-    return len(df)  # ← ✅ 登録件数を返す
+        # 新規のみ抽出
+        df_new = df[~df.apply(lambda row: (row["symbol"], row["date"]) in existing_keys, axis=1)]
 
+        # 登録
+        if not df_new.empty:
+            df_new.to_sql("price_history", conn, if_exists="append", index=False)
+
+    return {
+        "status": "inserted" if len(df_new) > 0 else "skipped",
+        "count": len(df_new)
+    }
