@@ -45,9 +45,11 @@ def detect_initial_move_row(row, vol_threshold, pr_threshold):
         df = yf.download(symbol, period=FETCH_PERIOD, interval="1d", progress=False, auto_adjust=False)
         if df.empty or len(df) < 6:
             return None
+
         df["volume_change"] = df["Volume"] / df["Volume"].rolling(5).mean()
         df["price_range"] = (df["Close"] - df["Open"]).abs() / df["Open"]
         df["avg_volume"] = df["Volume"].rolling(5).mean()
+
         latest = df.iloc[[-1]]
         if (
             latest["volume_change"].iloc[0] > vol_threshold and
@@ -58,6 +60,10 @@ def detect_initial_move_row(row, vol_threshold, pr_threshold):
                 "symbol": symbol,
                 "name": name,
                 "date": latest.index[0].strftime("%Y-%m-%d"),
+                "open": round(latest["Open"].iloc[0], 2),
+                "high": round(latest["High"].iloc[0], 2),
+                "low": round(latest["Low"].iloc[0], 2),
+                "close": round(latest["Close"].iloc[0], 2),
                 "volume_change": round(latest["volume_change"].iloc[0], 2),
                 "price_range": round(latest["price_range"].iloc[0], 4),
                 "avg_volume": int(latest["avg_volume"].iloc[0]),

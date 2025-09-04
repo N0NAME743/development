@@ -1,0 +1,37 @@
+[
+  {
+    "symbol": "5246.T",
+    "name": "ELEMENTS INC",
+    "date": "2025-06-22",
+    "image_path": "output/2025-06-22\\chart_5246.T_ELEMENTS INC_2025-06-22.png",
+    "gyazo_url": null,
+    "hash": "7487b58a73659b5add77490629a64fb0",
+    "score": null,
+    "comment": "✅ 現状は買い優勢の状況です。押し目やエントリーポイントを検討する局面と考えられます。\n📈 買いシグナル: 押し目ゾーンに到達（MACD下落中だが強トレンド・RSI低下）",
+    "signals": {
+      "buy": [
+        "押し目ゾーンに到達（MACD下落中だが強トレンド・RSI低下）"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  },
+  {
+    "symbol": "5255.T",
+    "name": "MONSTARLAB INC",
+    "date": "2025-06-22",
+    "image_path": "output/2025-06-22\\chart_5255.T_MONSTARLAB INC_2025-06-22.png",
+    "gyazo_url": null,
+    "hash": "1e5e7f4aefed6237d2b961909bd91689",
+    "score": null,
+    "comment": "⚠ 売りシグナルが優勢です。利確や調整の可能性に注意が必要な局面です。\n📉 売りシグナル: RSI過熱（85.6）、株価が中期線を大きく乖離（利確圏）",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "RSI過熱（85.6）",
+        "株価が中期線を大きく乖離（利確圏）"
+      ],
+      "neutral": []
+    }
+  }
+]

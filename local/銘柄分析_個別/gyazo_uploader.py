@@ -40,7 +40,7 @@ class GyazoUploader:
         with open(file_path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()
 
-    def upload(self, image_path, max_retry=3):
+    def upload(self, image_path, max_retry=3, desc=None):
         file_path = Path(image_path)
         if not file_path.exists():
             print(f"❌ ファイルが存在しません: {file_path}")
@@ -57,7 +57,10 @@ class GyazoUploader:
                 with open(file_path, "rb") as f:
                     response = requests.post(
                         "https://upload.gyazo.com/api/upload",
-                        data={"access_token": self.access_token},
+                        data={
+                            "access_token": self.access_token,
+                            # ❗ Gyazoはdescを無視するがログには残せる
+                        },
                         files={"imagedata": f},
                         timeout=15,
                     )
@@ -66,36 +69,33 @@ class GyazoUploader:
                 if response.status_code == 200:
                     data = response.json()
                     print(f"✅ アップロード成功: {file_path.name}（{duration:.2f}秒）")
-                    self._record_upload(image_hash, file_path.name, data["url"])
+                    self._record_upload(image_hash, file_path.name, data["url"], desc)
                     self._save_log()
                     time.sleep(self._dynamic_sleep(duration))
                     return data["url"]
-
                 elif response.status_code == 429:
-                    print(f"🚫 レート制限（429）: {file_path.name} → 30秒待機して再試行")
+                    print(f"🚫 レート制限（429）: {file_path.name} → 30秒待機")
                     time.sleep(30)
-
                 elif response.status_code == 503:
-                    print(f"⚠️ サーバー過負荷（503）: {file_path.name} → 10秒待機して再試行")
+                    print(f"⚠️ サーバー過負荷（503）: {file_path.name} → 10秒待機")
                     time.sleep(10)
-
                 else:
                     print(f"❌ アップロード失敗: {response.status_code} - {response.text}")
-                    break  # 致命的な失敗とみなして終了
-
+                    break
             except Exception as e:
-                print(f"⚠️ 通信エラー: {e} → {10*attempt}秒待機して再試行")
+                print(f"⚠️ 通信エラー: {e} → {10*attempt}秒待機")
                 time.sleep(10 * attempt)
 
         print(f"❌ 最終的に失敗: {file_path.name}")
         return None
 
-    def _record_upload(self, image_hash, file_name, url):
+    def _record_upload(self, image_hash, file_name, url, desc=None):
         self.uploaded_hashes.add(image_hash)
         self.log_data.append({
             "hash": image_hash,
             "file_name": file_name,
             "url": url,
+            "desc": desc,  # ✅ Gyazoに反映はされないがログには残す
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         })
 
