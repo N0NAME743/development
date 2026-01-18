@@ -1,0 +1,7 @@
+symbol,name,date,attention,comment,signals_buy,signals_sell,gyazo_url,image_path
+2673.T,YUMEMITSUKETAI CO LTD,2025-06-23,売り優勢,:warning: 売りシグナルが優勢です。調整に注意,,移動平均線下抜け、戻り売り陰線,,output/2025-06-23\chart_2673.T_YUMEMITSUKETAI CO LTD_2025-06-23.png
+3350.T,METAPLANET INC,2025-06-23,売り優勢,:warning: 売りシグナルが優勢です。調整に注意,押し目陽線,MACD陰転、過去に急騰／急落歴あり、RSI反落（過熱から下降）、三連続陰線（弱気連続）,,output/2025-06-23\chart_3350.T_METAPLANET INC_2025-06-23.png
+3672.T,ALTPLUSINC,2025-06-23,売り優勢,:warning: 売りシグナルが優勢です。調整に注意,押し目陽線,MACD陰転、過去に急騰／急落歴あり、下降トレンドライン割れ、高値切り下げ継続,,output/2025-06-23\chart_3672.T_ALTPLUSINC_2025-06-23.png
+3968.T,SEGUE GROUP CO LTD,2025-06-23,売り優勢,:warning: 売りシグナルが優勢です。調整に注意,,移動平均線下抜け、戻り売り陰線、三連続陰線（弱気連続）,,output/2025-06-23\chart_3968.T_SEGUE GROUP CO LTD_2025-06-23.png
+4576.T,D.WESTERN THERAPEUTICS INST INC,2025-06-23,売り優勢,:warning: 売りシグナルが優勢です。調整に注意,,移動平均線下抜け、過去に急騰／急落歴あり、戻り売り陰線,,output/2025-06-23\chart_4576.T_D.WESTERN THERAPEUTICS INST INC_2025-06-23.png
+5246.T,ELEMENTS INC,2025-06-23,売り優勢,:warning: 売りシグナルが優勢です。調整に注意,,移動平均線下抜け、戻り売り陰線、下降トレンドライン割れ、高値切り下げ継続、三連続陰線（弱気連続）,,output/2025-06-23\chart_5246.T_ELEMENTS INC_2025-06-23.png

@@ -1,0 +1,20 @@
+[
+  {
+    "symbol": "5255.T",
+    "name": "MONSTARLAB INC",
+    "date": "2025-08-31",
+    "image_path": "output/2025-08-31\\chart_5255.T_MONSTARLAB INC_2025-08-31.png",
+    "gyazo_url": null,
+    "hash": "e60c597946320e5c3d821f6f8df91df1",
+    "attention": "強い売り",
+    "comment": "⚠️ 売り圧力が高まっています。利確・調整に注意。",
+    "signals": {
+      "buy": [],
+      "sell": [
+        "移動平均線下抜け",
+        "戻り売り陰線"
+      ],
+      "neutral": []
+    }
+  }
+]

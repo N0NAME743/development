@@ -1,0 +1,21 @@
+[
+  {
+    "symbol": "5255.T",
+    "name": "MONSTARLAB INC",
+    "date": "2025-06-24",
+    "image_path": "output/2025-06-24\\chart_5255.T_MONSTARLAB INC_2025-06-24.png",
+    "gyazo_url": "https://i.gyazo.com/ffd68e69180623c90413dc8375db6d00.png",
+    "hash": "ffd68e69180623c90413dc8375db6d00",
+    "attention": "買い注目",
+    "comment": ":star: 買いシグナルが複数出現中",
+    "signals": {
+      "buy": [
+        "直近高値突破",
+        "押し目陽線",
+        "上昇トレンドライン反発"
+      ],
+      "sell": [],
+      "neutral": []
+    }
+  }
+]
