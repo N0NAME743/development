@@ -1,0 +1,10 @@
+MD FILE  : 2026-01-20_9348.T_ispace_analysis.md
+TICKER   : 9348.T
+NAME     : ispace
+PRICE    : 604
+SOURCE   : Yahoo Finance (yfinance)
+----------------------------------------
+START    : 01/20/2026 23:39:25
+END      : 01/20/2026 23:41:28
+DURATION : 122.42 sec
+----------------------------------------
