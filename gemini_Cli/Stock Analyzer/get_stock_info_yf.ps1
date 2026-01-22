@@ -94,7 +94,7 @@ PBR: $pbr
 取得日: $Date
 "@
 
-    $templatePrompt = Get-Content ".\prompt.md" -Raw -Encoding utf8
+    $templatePrompt = Get-Content ".\prompt_get_stock_info_yf.md" -Raw -Encoding utf8
 
     $finalPrompt = $systemPrompt + "`n`n" + $templatePrompt `
         -replace "{{TICKER}}", $ticker `
@@ -117,7 +117,7 @@ PBR: $pbr
     # =========================
     # ログ初期化
     # =========================
-    Set-Content $logPath "MD FILE  : ${Date}_${ticker}_${safeName}_analysis.md" -Encoding utf8
+    Set-Content $logPath "MD FILE  : ${Date}_${ticker}_${safeName}_info.md" -Encoding utf8
     Add-Content $logPath "TICKER   : $ticker" -Encoding utf8
     Add-Content $logPath "NAME     : $name"   -Encoding utf8
     Add-Content $logPath "PRICE    : $price"  -Encoding utf8
