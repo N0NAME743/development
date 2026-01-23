@@ -98,3 +98,19 @@
     [完成Markdown]
 
 - 株式分析（ファンダメンタル）を取得
+
+# その他
+STEP	役割
+-
+STEP1	何をやっている会社か
+STEP2	市場は何を期待しているか
+STEP3	その期待は数字で本当か
+STEP4	その途中で倒れないか
+STEP5	総合判断
+
+scores:
+  step1_business: 2
+  step2_valuation: 1
+  step3_growth: 2
+  step4_financial: 2
+  step5_total: 7
