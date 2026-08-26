@@ -1,0 +1,3 @@
+﻿"# 条件: volume_change > 2.0, price_range < 0.03, MIN_VOLUME > 50000"
+symbol,name,date,open,high,low,close,volume_change,volume_median_ratio,price_range,avg_volume,sma_short,sma_long,sma_mid,rsi,atr,bb_width,prev_high_5,score,condition,condition_desc
+3964.T,オークネット,2026-08-05,1506.0,1526.0,1455.0,1470.0,3.42,23.01,0.0239,925160,1362.2,1393.4,1370.36,57.7,49.5,0.105,1411.0,7,1,"volume_change > 2.0, price_range < 0.03, MIN_VOLUME > 50000"

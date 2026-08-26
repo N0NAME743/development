@@ -1,0 +1,1 @@
+MsgBox "シャッターは閉まっていますか？", vbExclamation, "確認"

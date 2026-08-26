@@ -1,0 +1,83 @@
+"# 条件: volume_change > 2.0, price_range < 0.03, MIN_VOLUME > 50000"
+symbol,name,date,open,high,low,close,volume_change,price_range,avg_volume
+9719.T,ＳＣＳＫ,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9716.T,乃村工藝社,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9729.T,トーカイ,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9735.T,セコム,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9715.T,トランス・コスモス,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9706.T,日本空港ビルデング,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9702.T,アイ・エス・ビー,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9722.T,藤田観光,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
+9699.T,ニシオホールディングス,2025-06-24,"Ticker
+9613.T    4000.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    4001.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64","Ticker
+9613.T    3986.0
+Name: 2025-06-24 00:00:00, dtype: float64",2.63,0.0035,3286920
