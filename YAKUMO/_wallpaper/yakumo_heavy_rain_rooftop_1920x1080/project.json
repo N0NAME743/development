@@ -1,0 +1,35 @@
+{
+  "title": "YAKUMO // ROOFTOP - Rainy Tokyo Night [Mouth Fixed]",
+  "description": "口元修正版 - 雨の屋上、赫眼の少女。\n\nFeatures:\n- ジュースを飲む口元を自然に修正\n- 時計はPC時刻と完全同期 (右上)\n- RAIN 20-500粒 調整可能 (⚙️で設定)\n- GLOW MODE: OFF / Eye Glow (横残像なし)\n- アンテナ無しクリーン版 1920x1080\n\n操作方法: 左上⚙️でパネル開閉\n\nClock syncs with PC. Mouth fixed, no afterimage.",
+  "preview": "preview.jpg",
+  "type": "web",
+  "file": "index.html",
+  "general": {
+    "properties": {
+      "rain_amount": {
+        "text": "Rain Amount",
+        "type": "slider",
+        "value": 35,
+        "min": 0,
+        "max": 100,
+        "order": 0
+      },
+      "glow_mode": {
+        "text": "Glow Mode",
+        "type": "combo",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "Off"
+          },
+          {
+            "value": 1,
+            "label": "Eye Glow"
+          }
+        ],
+        "order": 1
+      }
+    }
+  }
+}

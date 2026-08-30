@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YAKUMO // ROOFTOP</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#000}
+  #wrapper{position:relative;width:100vw;height:100vh;overflow:hidden}
+  #bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top}
+  #rainCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+  #eyeGlow{position:absolute;left:32.3%;top:18.7%;width:18px;height:12px;background:radial-gradient(circle, rgba(255,32,64,0.85) 0%, rgba(255,32,64,0) 70%);filter:blur(2.6px);opacity:0.45;pointer-events:none;z-index:3;transition:opacity 0.3s}
+  #eyeGlow2{position:absolute;left:38%;top:20%;width:14px;height:10px;background:radial-gradient(circle, rgba(255,32,64,0.6) 0%, rgba(255,32,64,0) 70%);filter:blur(2.6px);opacity:0.35;pointer-events:none;z-index:3}
+  .hidden{opacity:0!important}
+  #clock{position:absolute;top:24px;right:24px;z-index:10;color:rgba(255,255,255,0.85);font-family:'Segoe UI', 'Hiragino Kaku Gothic ProN', monospace;text-align:right;text-shadow:0 1px 8px rgba(0,0,0,0.8);pointer-events:none}
+  #clockTime{font-size:28px;letter-spacing:2px;font-weight:300}
+  #clockDate{font-size:12px;opacity:0.7;margin-top:4px;letter-spacing:1px}
+  #clockLabel{font-size:10px;opacity:0.5;letter-spacing:3px;margin-bottom:6px}
+  #gear{position:absolute;top:20px;left:20px;z-index:20;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.4);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.1);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:0.2s}
+  #gear:hover{background:rgba(255,255,255,0.15)}
+  #panel{position:absolute;top:70px;left:20px;z-index:20;width:240px;padding:18px;background:rgba(10,10,15,0.85);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;display:none}
+  #panel.show{display:block}
+  .label{font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.5);margin-bottom:8px;font-family:monospace}
+  .row{margin-bottom:18px}
+  .btns{display:flex;gap:8px}
+  .modeBtn{flex:1;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);border-radius:6px;cursor:pointer;transition:0.2s}
+  .modeBtn.active{background:rgba(255,40,80,0.25);border-color:rgba(255,40,80,0.5);color:#fff}
+  input[type=range]{width:100%;accent-color:#ff284f;height:4px}
+  .value{font-size:11px;color:rgba(255,255,255,0.6);font-family:monospace;margin-top:4px;text-align:right}
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <img id="bg" src="background.jpg" alt="YAKUMO">
+  <canvas id="rainCanvas"></canvas>
+  <div id="eyeGlow"></div>
+  <div id="eyeGlow2"></div>
+  
+  <div id="clock">
+    <div id="clockLabel">YAKUMO // ROOFTOP</div>
+    <div id="clockTime">00:00:00</div>
+    <div id="clockDate">01/01 MON</div>
+  </div>
+  
+  <div id="gear">⚙️</div>
+  <div id="panel">
+    <div class="row">
+      <div class="label">RAIN — 20~500</div>
+      <input id="rainSlider" type="range" min="0" max="100" value="35">
+      <div class="value" id="rainValue">RAIN: 188 / 500</div>
+    </div>
+    <div class="row">
+      <div class="label">GLOW MODE — OFF / EYE GLOW</div>
+      <div class="btns">
+        <button class="modeBtn active" data-mode="off">OFF</button>
+        <button class="modeBtn" data-mode="eye">EYE GLOW</button>
+      </div>
+    </div>
+    <div style="font-size:9px;color:rgba(255,255,255,0.3);font-family:monospace;margin-top:10px;line-height:1.5">
+      PC時刻と同期中<br>⚙️でパネルを閉じる
+    </div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('rainCanvas');
+const ctx = canvas.getContext('2d');
+const rainSlider = document.getElementById('rainSlider');
+const rainValue = document.getElementById('rainValue');
+const eyeGlow = document.getElementById('eyeGlow');
+const eyeGlow2 = document.getElementById('eyeGlow2');
+const gear = document.getElementById('gear');
+const panel = document.getElementById('panel');
+const clockTime = document.getElementById('clockTime');
+const clockDate = document.getElementById('clockDate');
+
+let drops = [];
+let mode = 'off';
+let rainPercent = 35;
+
+function resize(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; initRain(); }
+window.addEventListener('resize', resize);
+
+function initRain(){
+  const count = Math.floor(20 + (rainPercent/100)*480);
+  drops = [];
+  for(let i=0;i<count;i++){
+    drops.push({
+      x: Math.random()*canvas.width,
+      y: Math.random()*canvas.height - canvas.height,
+      len: 12 + Math.random()*18,
+      speed: 4 + Math.random()*6 + (rainPercent/100)*6,
+      opacity: 0.15 + Math.random()*0.4
+    });
+  }
+  rainValue.textContent = `RAIN: ${count} / 500`;
+}
+
+function updateRainFromSlider(){
+  rainPercent = parseInt(rainSlider.value);
+  initRain();
+}
+rainSlider.addEventListener('input', updateRainFromSlider);
+
+function drawRain(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle = '#9ab';
+  ctx.lineWidth = 1;
+  for(let d of drops){
+    ctx.globalAlpha = d.opacity;
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x - d.speed*0.15, d.y + d.len);
+    ctx.stroke();
+    d.y += d.speed;
+    d.x -= d.speed*0.15;
+    if(d.y > canvas.height){ d.y = -20; d.x = Math.random()*canvas.width; }
+    if(d.x < 0) d.x = canvas.width;
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(drawRain);
+}
+
+document.querySelectorAll('.modeBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.modeBtn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+    if(mode==='off'){ eyeGlow.classList.add('hidden'); eyeGlow2.classList.add('hidden'); }
+    else { eyeGlow.classList.remove('hidden'); eyeGlow2.classList.remove('hidden'); }
+  });
+});
+
+gear.addEventListener('click', ()=>{ panel.classList.toggle('show'); });
+
+function updateClock(){
+  const now = new Date(); // PC local time - syncs in Wallpaper Engine
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  const mo = String(now.getMonth()+1).padStart(2,'0');
+  const da = String(now.getDate()).padStart(2,'0');
+  const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  clockTime.textContent = `${h}:${m}:${s}`;
+  clockDate.textContent = `${mo}/${da} ${days[now.getDay()]}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Wallpaper Engine properties support
+window.wallpaperPropertyListener = {
+  applyUserProperties: function(props){
+    if(props.rain_amount){ rainPercent = props.rain_amount.value; rainSlider.value = rainPercent; initRain(); }
+    if(props.glow_mode){ mode = props.glow_mode.value==1 ? 'eye' : 'off'; 
+      document.querySelectorAll('.modeBtn').forEach(b=>b.classList.remove('active'));
+      document.querySelector(`[data-mode=${mode}]`).classList.add('active');
+      if(mode==='off'){ eyeGlow.classList.add('hidden'); eyeGlow2.classList.add('hidden'); }
+      else { eyeGlow.classList.remove('hidden'); eyeGlow2.classList.remove('hidden'); }
+    }
+  }
+};
+
+resize();
+drawRain();
+eyeGlow.classList.add('hidden'); eyeGlow2.classList.add('hidden');
+</script>
+</body>
+</html>
