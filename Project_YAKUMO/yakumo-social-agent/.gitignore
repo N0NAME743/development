@@ -1,0 +1,6 @@
+.env
+data/*.db
+data/dayone_exports/
+__pycache__/
+*.pyc
+.pytest_cache/

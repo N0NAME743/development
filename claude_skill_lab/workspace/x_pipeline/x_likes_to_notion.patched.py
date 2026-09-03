@@ -3,6 +3,8 @@ import json
 import sqlite3
 import requests
 
+from datetime import date
+
 from dotenv import load_dotenv
 from google import genai
 
@@ -29,6 +31,11 @@ X_REFRESH_TOKEN = os.getenv("X_REFRESH_TOKEN")
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATA_SOURCE_ID = os.getenv("NOTION_DATA_SOURCE_ID")
+
+# 「記録_IDEA from SNS」内のIDEA BOXデータベース。
+# AI査定が🟢 IDEA BOXへの投稿だけ、ここへもコピーする（INBOX側は残す＝広く浅いCapture、
+# IDEA BOXは狭く深いCurated、というユーザー自身の設計メモに沿った役割分担）。
+NOTION_IDEA_BOX_DATA_SOURCE_ID = os.getenv("NOTION_IDEA_BOX_DATA_SOURCE_ID")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -382,9 +389,9 @@ def get_liked_posts(user_id):
 # 自動的にAIの選択肢に含まれるようになる。
 # =========================================================
 
-def get_data_source_schema():
+def get_data_source_schema(data_source_id=None):
     response = requests.get(
-        f"https://api.notion.com/v1/data_sources/{NOTION_DATA_SOURCE_ID}",
+        f"https://api.notion.com/v1/data_sources/{data_source_id or NOTION_DATA_SOURCE_ID}",
         headers=notion_headers,
         timeout=15,
     )
@@ -411,6 +418,70 @@ DEFAULT_CATEGORY_OPTIONS = ["未分類"]
 DEFAULT_LANGUAGE_OPTIONS = [
     "🇯🇵 日本語", "🇺🇸 English", "🇨🇳 中文", "🇪🇸 Español", "🌐 Other",
 ]
+DEFAULT_AI_HANTEI_OPTIONS = [
+    "🟢 IDEA BOXへ", "⚪ 保留", "🔴 重複", "⚠️ 取得失敗",
+]
+DEFAULT_IDEA_BOX_TAG_OPTIONS = []
+DEFAULT_IDEA_BOX_PROJECT_OPTIONS = []
+DEFAULT_IDEA_BOX_AI_HYOKA_OPTIONS = ["高", "中", "低"]
+
+# ⚠️ 取得失敗はコード側で直接設定する専用値（Geminiには選ばせない）。
+AI_HANTEI_FETCH_FAILED = "⚠️ 取得失敗"
+
+# この値になったときだけ、IDEA BOXデータベースへも複製する。
+AI_HANTEI_IDEA_BOX = "🟢 IDEA BOXへ"
+
+# 本文が一切取得できなかった場合の定型タイトル・要約
+# （以前ChatGPTで手動運用していたときの表記に合わせている）
+FETCH_FAILED_TITLE = "対象のX投稿の内容が取得できなかったためタイトルを生成できません"
+FETCH_FAILED_SUMMARY = "対象のX投稿の内容が確認できないため、AI整理メモを作成できません。"
+
+
+def get_recent_inbox_titles(limit=30):
+    """
+    直近のINBOXページタイトルを取得する。
+    AI査定（🔴 重複）判定の材料として使う。
+    取得に失敗しても空リストで継続する（重複判定が甘くなるだけで、
+    パイプライン自体は止めない）。
+    """
+
+    try:
+        response = requests.post(
+            f"https://api.notion.com/v1/data_sources/{NOTION_DATA_SOURCE_ID}/query",
+            headers=notion_headers,
+            json={
+                "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+                "page_size": limit,
+            },
+            timeout=30,
+        )
+
+        response.raise_for_status()
+
+        titles = []
+
+        for page in response.json().get("results", []):
+            title_rt = page.get("properties", {}).get("Name", {}).get("title", [])
+
+            if title_rt:
+                titles.append(title_rt[0]["plain_text"])
+
+        return titles
+
+    except Exception as e:
+        print(f"直近タイトルの取得失敗、重複判定なしで継続: {e}")
+
+        return []
+
+
+# ユーザーの興味分野（AI査定「🟢 IDEA BOXへ」判定の目安として使う）。
+# 実際の興味の変化に合わせて、ここを直接編集してよい。
+USER_INTEREST_PROFILE = """
+・AIコーディングツール、Claude Code関連
+・プロンプトエンジニアリング、AIエージェントの自動化
+・画像/動画生成AI
+・個人開発・自動化パイプライン構築（Notion連携、Raspberry Piでの自前運用など）
+"""
 
 
 # =========================================================
@@ -421,6 +492,11 @@ def generate_ai_content(
     tweet_text,
     category_options,
     language_options,
+    ai_hantei_options=None,
+    recent_titles=None,
+    idea_box_tag_options=None,
+    idea_box_project_options=None,
+    idea_box_ai_hyoka_options=None,
     has_quote=False,
     has_post_article=False,
     has_quote_article=False,
@@ -434,12 +510,31 @@ def generate_ai_content(
     4. CATEGORY（Notionの既存選択肢から。無ければ["未分類"]）
     5. 各セクションの日本語訳（原文が日本語以外の場合のみ。
        原文は消さずページ側で併記する）
+    6. AI査定（🟢 IDEA BOXへ / ⚪ 保留 / 🔴 重複。以前ChatGPTで手動判定していたものの自動化）
+    7. IDEA BOX用の付随情報（AI査定が🟢の場合だけ実際に使用される。
+       「気になった理由・使い道」「AI評価」「タグ」「関連プロジェクト」）
 
     呼び出し回数は投稿1件につき1回のまま増やさない
-    （翻訳対象が増えてもAPIリクエスト数は変わらない）。
+    （判定・生成項目が増えてもAPIリクエスト数は変わらない）。
 
-    Geminiに失敗した場合は、元投稿ベースのフォールバック値を返す。
+    Geminiに失敗した場合は、元投稿ベースのフォールバック値を返す
+    （AI査定は安全側の「⚪ 保留」にする。誤って🟢と判定するより保留の方が安全）。
     """
+
+    ai_hantei_options = ai_hantei_options or DEFAULT_AI_HANTEI_OPTIONS
+    recent_titles = recent_titles or []
+    idea_box_tag_options = idea_box_tag_options or DEFAULT_IDEA_BOX_TAG_OPTIONS
+    idea_box_project_options = idea_box_project_options or DEFAULT_IDEA_BOX_PROJECT_OPTIONS
+    idea_box_ai_hyoka_options = idea_box_ai_hyoka_options or DEFAULT_IDEA_BOX_AI_HYOKA_OPTIONS
+
+    # Geminiに選ばせるのは「⚠️ 取得失敗」を除いた選択肢のみ。
+    # （取得失敗はコード側で直接判定するため、AIの判断対象にしない）
+    ai_hantei_choices = [
+        o for o in ai_hantei_options if o != AI_HANTEI_FETCH_FAILED
+    ]
+    fallback_ai_hantei = "⚪ 保留" if "⚪ 保留" in ai_hantei_choices else (
+        ai_hantei_choices[0] if ai_hantei_choices else None
+    )
 
     fallback_title = (
         tweet_text
@@ -454,6 +549,11 @@ def generate_ai_content(
         "summary": fallback_summary,
         "language": None,
         "category": ["未分類"] if "未分類" in category_options else [],
+        "ai_hantei": fallback_ai_hantei,
+        "idea_box_reason": "",
+        "idea_box_ai_hyoka": None,
+        "idea_box_tags": [],
+        "idea_box_projects": [],
         "translations": {
             "post": None,
             "quote": None,
@@ -472,6 +572,26 @@ def generate_ai_content(
     language_list_text = "\n".join(
         f"・{lang}" for lang in language_options
     ) or "・🌐 Other"
+
+    ai_hantei_list_text = "\n".join(
+        f"・{h}" for h in ai_hantei_choices
+    ) or "・⚪ 保留"
+
+    idea_box_tag_list_text = "\n".join(
+        f"・{t}" for t in idea_box_tag_options
+    ) or "（既存タグなし。空配列でよい）"
+
+    idea_box_project_list_text = "\n".join(
+        f"・{p}" for p in idea_box_project_options
+    ) or "（既存プロジェクトタグなし。空配列でよい）"
+
+    idea_box_ai_hyoka_list_text = "\n".join(
+        f"・{h}" for h in idea_box_ai_hyoka_options
+    ) or "・中"
+
+    recent_titles_text = "\n".join(
+        f"・{t}" for t in recent_titles
+    ) or "（直近の投稿なし）"
 
     needed_translation_keys = ["post"]
 
@@ -514,6 +634,12 @@ title/summaryは常に日本語、translationsは
   "summary": "日本語の整理メモ（原文が何語でも必ず日本語）",
   "language": "投稿本文（[引用元投稿]や[Article本文]は含まない、一番最初の投稿）の言語",
   "category": ["該当するカテゴリ名の配列"],
+  "ai_hantei": "下記の選択肢から1つ",
+  "ai_hantei_reason": "判定理由（日本語、1文程度）",
+  "idea_box_reason": "気になった理由・使い道（日本語、1〜2文。ai_hanteiが🟢以外でも一応埋める）",
+  "idea_box_ai_hyoka": "下記の選択肢から1つ（情報としての価値の高さ）",
+  "idea_box_tags": ["下記の既存タグ一覧から該当するものだけの配列。無理に選ばない"],
+  "idea_box_projects": ["下記の既存プロジェクト一覧から関連するものだけの配列。無理に選ばない"],
   "translations": {{
     "post": "投稿本文の日本語訳、または null",
     "quote": "[引用元投稿]の日本語訳、または null（無ければ常にnull）",
@@ -566,6 +692,49 @@ title/summaryは常に日本語、translationsは
 ・内容に近いものが無ければ ["未分類"] とする
 
 {category_list_text}
+
+
+【ai_hantei の条件】
+
+以下の選択肢から1つだけ選ぶ。
+
+{ai_hantei_list_text}
+
+判定基準:
+
+・「🟢 IDEA BOXへ」: 具体的な手法・ツール・実装が書かれており、後から自分の作業に応用・参照する価値がある
+・「⚪ 保留」: 単なるニュース・宣伝・感想止まりで深掘りする価値が薄い場合、または下記の興味分野に直結せず今の自分には不要と思われる場合
+・「🔴 重複」: 下記の直近投稿一覧と話題・内容が明確に重複している場合
+
+【ユーザーの興味分野（🟢 IDEA BOXへ 判定の目安）】
+{USER_INTEREST_PROFILE}
+上記に直結しない一般ニュース・宣伝・感想止まりの投稿は「⚪ 保留」寄りに判定する。
+
+厳密な判定である必要はない。迷ったら「⚪ 保留」にしてよい（最終確認は人間が行う）。
+
+【直近のINBOX投稿タイトル（重複判定用）】
+
+{recent_titles_text}
+
+
+【idea_box_reason / idea_box_ai_hyoka / idea_box_tags / idea_box_projects の条件】
+
+これらは、ai_hanteiが「🟢 IDEA BOXへ」の場合にのみ実際に使用される
+（別データベース「IDEA BOX」へ複製する際の項目）。それ以外の判定でも
+一応埋めてよいが、手を抜いて構わない。
+
+・idea_box_reason: なぜ気になったか、後で何に使えそうかを1〜2文で
+・idea_box_ai_hyoka: 情報としての価値。以下から1つだけ選ぶ
+
+{idea_box_ai_hyoka_list_text}
+
+・idea_box_tags: 以下の既存タグの表記そのまま使い、配列で返す（複数可、0個でもよい）。新しいタグ名を勝手に作らない
+
+{idea_box_tag_list_text}
+
+・idea_box_projects: 以下の既存プロジェクトの表記そのまま使い、配列で返す（複数可、0個でもよい）。新しい名前を勝手に作らない。明確に関連しなければ空配列にする
+
+{idea_box_project_list_text}
 
 
 【translations の条件】
@@ -654,6 +823,17 @@ title/summaryは常に日本語、translationsは
         if not category:
             category = ["未分類"] if "未分類" in category_options else []
 
+        # ai_hanteiはNotionの既存選択肢（⚠️ 取得失敗を除く）と
+        # 完全一致する場合のみ採用。一致しなければ安全側の
+        # フォールバック値（⚪ 保留 相当）にする。
+        ai_hantei = data.get("ai_hantei")
+
+        if ai_hantei not in ai_hantei_choices:
+            print(
+                f"AI査定の判定値が選択肢外のためフォールバックします: {ai_hantei!r}"
+            )
+            ai_hantei = fallback_ai_hantei
+
         translations_raw = data.get("translations") or {}
 
         translations = {
@@ -665,11 +845,43 @@ title/summaryは常に日本語、translationsは
             for key in ["post", "quote", "post_article", "quote_article"]
         }
 
+        idea_box_reason = str(data.get("idea_box_reason") or "").strip()
+
+        idea_box_ai_hyoka = data.get("idea_box_ai_hyoka")
+
+        if idea_box_ai_hyoka not in idea_box_ai_hyoka_options:
+            idea_box_ai_hyoka = None
+
+        idea_box_tags = data.get("idea_box_tags") or []
+
+        if not isinstance(idea_box_tags, list):
+            idea_box_tags = [idea_box_tags]
+
+        idea_box_tags = [
+            t for t in idea_box_tags
+            if isinstance(t, str) and t in idea_box_tag_options
+        ]
+
+        idea_box_projects = data.get("idea_box_projects") or []
+
+        if not isinstance(idea_box_projects, list):
+            idea_box_projects = [idea_box_projects]
+
+        idea_box_projects = [
+            p for p in idea_box_projects
+            if isinstance(p, str) and p in idea_box_project_options
+        ]
+
         return {
             "title": title,
             "summary": summary,
             "language": language,
             "category": category,
+            "idea_box_reason": idea_box_reason,
+            "idea_box_ai_hyoka": idea_box_ai_hyoka,
+            "idea_box_tags": idea_box_tags,
+            "idea_box_projects": idea_box_projects,
+            "ai_hantei": ai_hantei,
             "translations": translations,
         }
 
@@ -857,7 +1069,17 @@ def build_gemini_input(tweet_text, fx_post):
 # Notion API
 # =========================================================
 
-def save_to_notion(tweet, username, category_options, language_options):
+def save_to_notion(
+    tweet,
+    username,
+    category_options,
+    language_options,
+    ai_hantei_options=None,
+    recent_titles=None,
+    idea_box_tag_options=None,
+    idea_box_project_options=None,
+    idea_box_ai_hyoka_options=None,
+):
     """
     Notionへページを作成する。
 
@@ -872,7 +1094,17 @@ def save_to_notion(tweet, username, category_options, language_options):
     原文（外国語なら日本語訳＋原文を併記）
         ↓
     （あれば）引用 / Article / 画像（それぞれ外国語なら日本語訳併記）
+
+    recent_titlesが渡されていれば、保存したタイトルをその場でリストへ
+    追記する（同一実行内で複数件処理する際も🔴重複判定に反映させるため）。
+
+    AI査定が🟢 IDEA BOXへだった場合、INBOXへの保存に加えて
+    「記録_IDEA from SNS」内のIDEA BOXデータベースへもコピーする
+    （INBOX側はそのまま残す＝広く浅いCapture、IDEA BOXは狭く深いCurated）。
     """
+
+    if recent_titles is None:
+        recent_titles = []
 
     fallback_text = tweet.get("text", "").strip()
     fallback_url = f"https://x.com/{username}/status/{tweet['id']}"
@@ -891,34 +1123,62 @@ def save_to_notion(tweet, username, category_options, language_options):
         tweet_url = fallback_url
         fx_post = None
 
-    quote = (fx_post or {}).get("quote")
-    has_quote = bool(quote and quote.get("available") and quote.get("text"))
+    if not tweet_text:
+        # 本文が一切取得できなかった場合はGeminiを呼ばず、
+        # 定型のタイトル・要約で「⚠️ 取得失敗」として保存する。
+        title = FETCH_FAILED_TITLE
+        summary = FETCH_FAILED_SUMMARY
+        language = None
+        category = ["未分類"] if "未分類" in category_options else []
+        ai_hantei = AI_HANTEI_FETCH_FAILED if (
+            ai_hantei_options is None or AI_HANTEI_FETCH_FAILED in ai_hantei_options
+        ) else None
+        idea_box_reason = ""
+        idea_box_ai_hyoka = None
+        idea_box_tags = []
+        idea_box_projects = []
+        translations = {
+            "post": None, "quote": None, "post_article": None, "quote_article": None,
+        }
+    else:
+        quote = (fx_post or {}).get("quote")
+        has_quote = bool(quote and quote.get("available") and quote.get("text"))
 
-    post_article = (fx_post or {}).get("article")
-    has_post_article = bool(post_article and post_article.get("text"))
+        post_article = (fx_post or {}).get("article")
+        has_post_article = bool(post_article and post_article.get("text"))
 
-    quote_article = quote.get("article") if quote else None
-    has_quote_article = bool(quote_article and quote_article.get("text"))
+        quote_article = quote.get("article") if quote else None
+        has_quote_article = bool(quote_article and quote_article.get("text"))
 
-    # Geminiは1投稿につき1回だけ呼ぶ。
-    # 引用元の本文があれば合成して渡す（空要約対策）。
-    # LANGUAGE/CATEGORY判定・各セクションの翻訳もこの1回に含める。
-    gemini_input = build_gemini_input(tweet_text, fx_post)
+        # Geminiは1投稿につき1回だけ呼ぶ。
+        # 引用元の本文があれば合成して渡す（空要約対策）。
+        # LANGUAGE/CATEGORY/AI査定判定・各セクションの翻訳もこの1回に含める。
+        gemini_input = build_gemini_input(tweet_text, fx_post)
 
-    ai = generate_ai_content(
-        gemini_input,
-        category_options,
-        language_options,
-        has_quote=has_quote,
-        has_post_article=has_post_article,
-        has_quote_article=has_quote_article,
-    )
+        ai = generate_ai_content(
+            gemini_input,
+            category_options,
+            language_options,
+            ai_hantei_options=ai_hantei_options,
+            recent_titles=recent_titles,
+            idea_box_tag_options=idea_box_tag_options,
+            idea_box_project_options=idea_box_project_options,
+            idea_box_ai_hyoka_options=idea_box_ai_hyoka_options,
+            has_quote=has_quote,
+            has_post_article=has_post_article,
+            has_quote_article=has_quote_article,
+        )
 
-    title = ai["title"]
-    summary = ai["summary"]
-    language = ai["language"]
-    category = ai["category"]
-    translations = ai["translations"]
+        title = ai["title"]
+        summary = ai["summary"]
+        language = ai["language"]
+        category = ai["category"]
+        ai_hantei = ai["ai_hantei"]
+        idea_box_reason = ai["idea_box_reason"]
+        idea_box_ai_hyoka = ai["idea_box_ai_hyoka"]
+        idea_box_tags = ai["idea_box_tags"]
+        idea_box_projects = ai["idea_box_projects"]
+        translations = ai["translations"]
 
     children = [
         # -------------------------------------------------
@@ -1020,6 +1280,9 @@ def save_to_notion(tweet, username, category_options, language_options):
     if language:
         properties["LANGUAGE"] = {"select": {"name": language}}
 
+    if ai_hantei:
+        properties["AI査定"] = {"select": {"name": ai_hantei}}
+
     payload = {
         "parent": {
             "type": "data_source_id",
@@ -1039,6 +1302,121 @@ def save_to_notion(tweet, username, category_options, language_options):
     )
 
     response.raise_for_status()
+
+    # 同一実行内でこの後処理する投稿の🔴重複判定にも反映されるよう、
+    # 保存できたタイトルをその場で追記する。
+    recent_titles.insert(0, title)
+
+    if ai_hantei == AI_HANTEI_IDEA_BOX:
+        author_name = (
+            (fx_post or {}).get("author", {}).get("name")
+            or (fx_post or {}).get("author", {}).get("screen_name")
+            or username
+        )
+
+        try:
+            save_to_idea_box(
+                tweet_url,
+                title,
+                summary,
+                idea_box_reason,
+                idea_box_ai_hyoka,
+                idea_box_tags,
+                idea_box_projects,
+                author_name,
+            )
+        except Exception as e:
+            # INBOXへの保存は既に成功しているので、IDEA BOX側の失敗で
+            # 全体を失敗扱いにはしない（ログだけ残す）。
+            print(f"IDEA BOXへのコピー失敗: {e}")
+
+
+def save_to_idea_box(
+    tweet_url,
+    title,
+    summary,
+    idea_box_reason,
+    idea_box_ai_hyoka,
+    idea_box_tags,
+    idea_box_projects,
+    author_name,
+):
+    """
+    「記録_IDEA from SNS」内のIDEA BOXデータベースへ複製する。
+    INBOX側はそのまま残す（広く浅いCapture）、IDEA BOXは狭く深いCurated、
+    というユーザー自身の設計メモに沿った役割分担。
+    """
+
+    if not NOTION_IDEA_BOX_DATA_SOURCE_ID:
+        print(
+            "NOTION_IDEA_BOX_DATA_SOURCE_ID未設定のため、"
+            "IDEA BOXへのコピーをスキップします"
+        )
+        return
+
+    properties = {
+        "Name": {
+            "title": [{"text": {"content": title}}]
+        },
+        "URL": {
+            "url": tweet_url
+        },
+        "一言要約": {
+            "rich_text": [{"text": {"content": summary}}]
+        },
+        "ソース種別": {
+            "select": {"name": "X"}
+        },
+        "ステータス": {
+            "select": {"name": "未整理"}
+        },
+        "取得日": {
+            "date": {"start": date.today().isoformat()}
+        },
+    }
+
+    if author_name:
+        properties["元投稿者・作者"] = {
+            "rich_text": [{"text": {"content": author_name}}]
+        }
+
+    if idea_box_reason:
+        properties["気になった理由・使い道"] = {
+            "rich_text": [{"text": {"content": idea_box_reason}}]
+        }
+
+    if idea_box_ai_hyoka:
+        properties["AI評価"] = {"select": {"name": idea_box_ai_hyoka}}
+
+    if idea_box_tags:
+        properties["タグ"] = {
+            "multi_select": [{"name": t} for t in idea_box_tags]
+        }
+
+    if idea_box_projects:
+        properties["関連プロジェクト"] = {
+            "multi_select": [{"name": p} for p in idea_box_projects]
+        }
+
+    payload = {
+        "parent": {
+            "type": "data_source_id",
+            "data_source_id": NOTION_IDEA_BOX_DATA_SOURCE_ID,
+        },
+
+        "properties": properties,
+    }
+
+    response = requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=notion_headers,
+        json=payload,
+        timeout=30,
+    )
+
+    response.raise_for_status()
+
+    print(f"IDEA BOXへコピー完了: {title}")
 
 
 # =========================================================
@@ -1064,11 +1442,47 @@ def main():
                 schema, "LANGUAGE", "select"
             ) or DEFAULT_LANGUAGE_OPTIONS
 
+            ai_hantei_options = get_select_option_names(
+                schema, "AI査定", "select"
+            ) or DEFAULT_AI_HANTEI_OPTIONS
+
         except Exception as e:
             print(f"Notionスキーマ取得失敗、デフォルト値で継続: {e}")
 
             category_options = DEFAULT_CATEGORY_OPTIONS
             language_options = DEFAULT_LANGUAGE_OPTIONS
+            ai_hantei_options = DEFAULT_AI_HANTEI_OPTIONS
+
+        # IDEA BOX（記録_IDEA from SNS内）の既存タグ・関連プロジェクト・AI評価の
+        # 選択肢も同様に実行時取得する。NOTION_IDEA_BOX_DATA_SOURCE_ID未設定なら
+        # IDEA BOXへのコピー機能自体をスキップする（INBOXへの保存は通常通り継続）。
+        idea_box_tag_options = DEFAULT_IDEA_BOX_TAG_OPTIONS
+        idea_box_project_options = DEFAULT_IDEA_BOX_PROJECT_OPTIONS
+        idea_box_ai_hyoka_options = DEFAULT_IDEA_BOX_AI_HYOKA_OPTIONS
+
+        if NOTION_IDEA_BOX_DATA_SOURCE_ID:
+            try:
+                idea_box_schema = get_data_source_schema(NOTION_IDEA_BOX_DATA_SOURCE_ID)
+
+                idea_box_tag_options = get_select_option_names(
+                    idea_box_schema, "タグ", "multi_select"
+                ) or DEFAULT_IDEA_BOX_TAG_OPTIONS
+
+                idea_box_project_options = get_select_option_names(
+                    idea_box_schema, "関連プロジェクト", "multi_select"
+                ) or DEFAULT_IDEA_BOX_PROJECT_OPTIONS
+
+                idea_box_ai_hyoka_options = get_select_option_names(
+                    idea_box_schema, "AI評価", "select"
+                ) or DEFAULT_IDEA_BOX_AI_HYOKA_OPTIONS
+
+            except Exception as e:
+                print(f"IDEA BOXスキーマ取得失敗、デフォルト値で継続: {e}")
+
+        # 🔴重複判定用に直近のINBOXタイトルを取得しておく。
+        # 同一実行内で新たに保存したタイトルは save_to_notion() が
+        # このリストへ追記していく。
+        recent_titles = get_recent_inbox_titles(limit=30)
 
         user_id = get_my_user_id()
 
@@ -1119,6 +1533,11 @@ def main():
                     username,
                     category_options,
                     language_options,
+                    ai_hantei_options=ai_hantei_options,
+                    recent_titles=recent_titles,
+                    idea_box_tag_options=idea_box_tag_options,
+                    idea_box_project_options=idea_box_project_options,
+                    idea_box_ai_hyoka_options=idea_box_ai_hyoka_options,
                 )
 
                 # Notion保存成功後だけ処理済みにする

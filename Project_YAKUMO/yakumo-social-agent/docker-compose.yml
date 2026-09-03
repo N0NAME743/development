@@ -1,0 +1,24 @@
+# この開発環境(devcontainer)にはDockerが無いため、この構成はビルド・起動を検証できていない。
+# docs/architecture.md 1.2節を参照。Docker Desktop等が使える環境で試すこと。
+#
+# 想定用途: n8nを常駐させ、cronトリガーからPhaseごとのPythonスクリプト（app/以下）を
+# 呼び出すオーケストレーターとして使う（Phase 4以降、n8n/workflows/ にワークフローを追加してから）。
+
+version: "3.9"
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=Asia/Tokyo
+    volumes:
+      - ./n8n/workflows:/home/node/.n8n/workflows
+      - n8n_data:/home/node/.n8n
+    env_file:
+      - .env
+
+volumes:
+  n8n_data:
