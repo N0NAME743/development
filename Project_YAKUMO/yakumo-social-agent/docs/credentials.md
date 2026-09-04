@@ -4,8 +4,11 @@ Claude Codeは以下を代行できない。取得後、値そのものをチャ
 
 ## 1. AI Provider（Phase 3で必要）
 
-- Anthropic Console（https://console.anthropic.com/）または OpenAI Platform（https://platform.openai.com/）でAPIキーを発行
-- `.env` の `ANTHROPIC_API_KEY` または `OPENAI_API_KEY`（`AI_API_KEY` でも可）に設定
+3つの実装（`GeminiProvider` / `AnthropicProvider` / `OpenAIProvider`）から選べる。**おすすめはGemini**（無料枠あり・既存キーを流用可）。
+
+- **Gemini（推奨）**: 既存のRaspberry Pi上の `x_likes_to_notion.py` と同じ `GEMINI_API_KEY` がそのまま使える（新規取得不要）。`.env` の `GEMINI_API_KEY`（`AI_API_KEY` でも可）に設定。`gemini-3.5-flash-lite` は無料枠があり、この用途（短文の判定・生成）なら実質無料〜低コストで運用できる見込み
+- **Anthropic**: Anthropic Console（https://console.anthropic.com/）でAPIキーを発行し、`.env` の `ANTHROPIC_API_KEY`（`AI_API_KEY` でも可）に設定。無料枠なし
+- **OpenAI**: OpenAI Platform（https://platform.openai.com/）でAPIキーを発行し、`.env` の `OPENAI_API_KEY`（`AI_API_KEY` でも可）に設定。無料枠なし
 
 ## 2. Discord Bot（Phase 4で必要）
 
