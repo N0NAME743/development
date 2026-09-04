@@ -1,9 +1,18 @@
 # セットアップ
 
-## Phase 2（今すぐ試せる。認証情報不要）
+## 依存パッケージのインストール
 
 ```bash
 cd yakumo-social-agent
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt        # 実行に必要な最小限（requests, python-dotenv）
+pip install -r requirements-dev.txt    # テストも実行する場合（上記 + pytest）
+```
+
+## Phase 2（今すぐ試せる。認証情報不要）
+
+```bash
 python3 run_mock.py        # 情報源取得(Mock) → AI判定・生成(Mock) → Discord通知(Mock)
 python3 process_queue.py   # 承認シミュレーション → 投稿ペース制御キューの動作確認(DRY_RUN)
 ```
@@ -22,4 +31,4 @@ python3 process_queue.py   # 承認シミュレーション → 投稿ペース�
 cp .env.example .env
 ```
 
-`.env` は絶対にgitへコミットしないこと（`.gitignore` 済み）。
+`.env` は絶対にgitへコミットしないこと（`.gitignore` 済み）。`run_mock.py` / `process_queue.py` はいずれも起動時に`python-dotenv`で`.env`を自動読み込みするため、値を埋めるだけでよい（別途`export`する必要はない）。

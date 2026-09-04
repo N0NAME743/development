@@ -17,6 +17,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
 from app.common.state import PostState
 from app.database.db import Database
 from app.pipeline.queue import PostingQueue
