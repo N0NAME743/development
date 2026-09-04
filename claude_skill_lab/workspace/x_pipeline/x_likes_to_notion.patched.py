@@ -934,6 +934,22 @@ def chunk_text(text, size=1900):
     return chunks
 
 
+def rich_text_property(text):
+    """
+    Notionのrich_textプロパティ値を作る。
+    2000文字（UTF-16基準）を超える場合はchunk_textで分割し、
+    複数のrich_textオブジェクトとして返す（本文ブロックと同じ理由）。
+    """
+
+    if not text:
+        return []
+
+    return [
+        {"text": {"content": chunk}}
+        for chunk in chunk_text(text)
+    ]
+
+
 def paragraph_blocks(text):
     if not text:
         return []
@@ -1376,7 +1392,7 @@ def save_to_idea_box(
             "url": tweet_url
         },
         "一言要約": {
-            "rich_text": [{"text": {"content": summary}}]
+            "rich_text": rich_text_property(summary)
         },
         "ソース種別": {
             "select": {"name": "X"}
@@ -1391,12 +1407,12 @@ def save_to_idea_box(
 
     if author_name:
         properties["元投稿者・作者"] = {
-            "rich_text": [{"text": {"content": author_name}}]
+            "rich_text": rich_text_property(author_name)
         }
 
     if idea_box_reason:
         properties["気になった理由・使い道"] = {
-            "rich_text": [{"text": {"content": idea_box_reason}}]
+            "rich_text": rich_text_property(idea_box_reason)
         }
 
     if idea_box_ai_hyoka:
