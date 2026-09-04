@@ -1,0 +1,11 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu24.04",
+
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+
+  "mounts": [
+    "source=${localEnv:USERPROFILE}/Documents/ObsidianV2,target=/workspaces/obsidian-vault,type=bind,consistency=cached"
+  ]
+}

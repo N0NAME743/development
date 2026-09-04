@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git config *)",
+      "Bash(grep -rhoP '^id:\\\\s*.*$' --include=\"*.md\" .)",
+      "Bash(echo \"\\(exit code: $?\\)\")",
+      "Bash(git status *)",
+      "Bash(git add *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git commit -m ' *)",
+      "Read(//home/vscode/.claude/projects/**)",
+      "WebSearch",
+      "WebFetch(domain:developers.openai.com)"
+    ]
+  }
+}
