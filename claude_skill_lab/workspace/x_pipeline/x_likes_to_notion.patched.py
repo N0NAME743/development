@@ -902,15 +902,36 @@ def chunk_text(text, size=1900):
     """
     Notionのrich_text 1要素あたり2000文字制限に対応するため、
     長いテキストを安全な長さに分割する。
+
+    Notion側の文字数カウントはUTF-16コードユニット単位。
+    絵文字や装飾用Unicode文字（Mathematical Alphanumeric Symbolsなど）は
+    サロゲートペアでUTF-16 2ユニットになるが、Pythonの文字数（コードポイント数）
+    では1文字として数えられるため、Python文字数で単純に区切ると
+    実際のUTF-16長が制限を超えることがある。そのためUTF-16換算の長さで区切る。
     """
 
     if not text:
         return [""]
 
-    return [
-        text[i:i + size]
-        for i in range(0, len(text), size)
-    ]
+    chunks = []
+    current = []
+    current_len = 0
+
+    for ch in text:
+        ch_len = 2 if ord(ch) > 0xFFFF else 1
+
+        if current_len + ch_len > size and current:
+            chunks.append("".join(current))
+            current = []
+            current_len = 0
+
+        current.append(ch)
+        current_len += ch_len
+
+    if current:
+        chunks.append("".join(current))
+
+    return chunks
 
 
 def paragraph_blocks(text):
@@ -1199,20 +1220,7 @@ def save_to_notion(
             }
         },
 
-        {
-            "object": "block",
-            "type": "paragraph",
-            "paragraph": {
-                "rich_text": [
-                    {
-                        "type": "text",
-                        "text": {
-                            "content": summary
-                        }
-                    }
-                ]
-            }
-        },
+        *paragraph_blocks(summary),
 
         {
             "object": "block",
@@ -1324,6 +1332,7 @@ def save_to_notion(
                 idea_box_tags,
                 idea_box_projects,
                 author_name,
+                children,
             )
         except Exception as e:
             # INBOXへの保存は既に成功しているので、IDEA BOX側の失敗で
@@ -1340,11 +1349,16 @@ def save_to_idea_box(
     idea_box_tags,
     idea_box_projects,
     author_name,
+    children,
 ):
     """
     「記録_IDEA from SNS」内のIDEA BOXデータベースへ複製する。
     INBOX側はそのまま残す（広く浅いCapture）、IDEA BOXは狭く深いCurated、
     というユーザー自身の設計メモに沿った役割分担。
+
+    本文（AI整理メモ・原文・引用/Article/画像）もINBOX側と同じ
+    childrenブロック列をそのまま複製する（プロパティのみだと
+    後から見返す際に内容が空同然になってしまうため）。
     """
 
     if not NOTION_IDEA_BOX_DATA_SOURCE_ID:
@@ -1405,6 +1419,8 @@ def save_to_idea_box(
         },
 
         "properties": properties,
+
+        "children": children,
     }
 
     response = requests.post(
