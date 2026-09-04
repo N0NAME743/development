@@ -19,11 +19,7 @@ python3 process_queue.py   # 承認シミュレーション → 投稿ペース�
 
 `data/yakumo.db` が作成され、サンプルの「記録_Research INBOX」エントリー4件が処理される。もう一度`run_mock.py`を実行すると、同じエントリーは重複防止により再処理されない（`data/yakumo.db` を削除すればリセットできる）。
 
-## 実データでの動作確認（NotionInboxSourceを試す場合）
-
-既存のX→Notionパイプラインと同じNotion認証情報があれば、Mockを介さず実際の「記録_Research INBOX」からデータを取得できる（AI/Discord/X部分はまだMockのまま組み合わせて試せる）。`docs/credentials.md` の4章を参照し、`.env`に`NOTION_TOKEN`/`NOTION_DATA_SOURCE_ID`を設定する。
-
-## Phase 3以降
+## Phase 3（実データ・実AI。GEMINI_API_KEYがあればすぐ試せる）
 
 `docs/credentials.md` に必要な認証情報の一覧と取得手順（USER ACTION REQUIRED部分）をまとめている。準備ができたら `.env.example` を `.env` にコピーし、値を埋める。
 
@@ -31,4 +27,17 @@ python3 process_queue.py   # 承認シミュレーション → 投稿ペース�
 cp .env.example .env
 ```
 
-`.env` は絶対にgitへコミットしないこと（`.gitignore` 済み）。`run_mock.py` / `process_queue.py` はいずれも起動時に`python-dotenv`で`.env`を自動読み込みするため、値を埋めるだけでよい（別途`export`する必要はない）。
+`.env` は絶対にgitへコミットしないこと（`.gitignore` 済み）。`run_mock.py` / `process_queue.py` / `poll_inbox.py` はいずれも起動時に`python-dotenv`で`.env`を自動読み込みするため、値を埋めるだけでよい（別途`export`する必要はない）。
+
+最低限必要なのは `NOTION_TOKEN` / `NOTION_DATA_SOURCE_ID`（既存のX→Notionパイプラインと共用可）と、AIプロバイダのキー（既定は無料枠のある `GEMINI_API_KEY`。同じくx_likes_to_notion.pyと共用可）。
+
+```bash
+python3 poll_inbox.py      # 実際の記録_Research INBOX → 実AI（既定Gemini）→ Discord通知（まだConsole表示）
+python3 process_queue.py   # 承認シミュレーション → 投稿ペース制御キューの動作確認(DRY_RUN)
+```
+
+`AI_PROVIDER=anthropic` または `AI_PROVIDER=openai` で切り替え可能（それぞれ対応するAPIキーが必要）。
+
+## Phase 4以降
+
+Discord Bot（承認フロー）とX投稿はまだ未実装。必要な認証情報は `docs/credentials.md` の2・3章を参照。
