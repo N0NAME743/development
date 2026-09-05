@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
-"""Phase 3 エントリーポイント（実データ版）。
+"""情報源: GitHubで話題のリポジトリ（poll_inbox.pyと同じパイプライン、情報源だけ差し替え）。
 
-run_mock.py と同じパイプラインを、Mockではなく実際の
-「記録_Research INBOX」（Notion）と実AI（既定: Gemini）で実行する。
+DISCORD_BOT_TOKENが設定されていれば実際のDiscordへ通知する。
+未設定の間はConsole表示のまま。
 
-DISCORD_BOT_TOKENが設定されていれば実際のDiscordへ通知する（Phase 4）。
-未設定の間はConsole表示のまま（承認・投稿ペース制御を試すには process_queue.py を使う。
-Discord Botを使う場合は discord_daemon.py も常駐させ、そちらで承認/却下する）。
-X投稿（Phase 5）はまだ未実装。
-
-必要な環境変数（.env。docs/credentials.md 参照）:
-  NOTION_TOKEN, NOTION_DATA_SOURCE_ID   — 記録_Research INBOXの認証情報（既存パイプラインと共用可）
-  NOTION_AI_HANTEI_VALUE                — 対象とするAI査定の値（既定: "🟢 IDEA BOXへ"）
+必要な環境変数（.env）:
   AI_PROVIDER                           — "gemini"（既定・無料枠あり） | "anthropic" | "openai"
   GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY — 選んだAI_PROVIDER用（AI_API_KEYでも可）
-  DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID — 設定時のみDiscordへ通知（Phase 4）
+  DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID — 設定時のみDiscordへ通知
+  GITHUB_TOKEN                          — 任意。未設定でも動くが、レート制限が60回/時と低くなる
+  GITHUB_TRENDING_LOOKBACK_DAYS         — 既定7（何日以内に作られたリポジトリを対象にするか）
+  GITHUB_TRENDING_MIN_STARS             — 既定50（最低スター数）
 
-本番では、これをsystemd等で定期実行（例: 15分おき）する想定
-（process_queue.py とは別プロセス）。
+本番では、これをsystemd等で定期実行（例: 1日1回程度で十分）する想定
+（poll_inbox.py / process_queue.py とは別プロセス）。
 """
 
 import os
@@ -33,26 +29,16 @@ from app.common.factory import build_ai_provider, build_notifier
 from app.database.db import Database
 from app.notify.console_notifier import ConsoleNotifier
 from app.pipeline.runner import PipelineRunner
-from app.source.notion_inbox_source import NotionInboxSource
+from app.source.github_trending_source import GitHubTrendingSource
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DATA_DIR, "yakumo.db")
 
 
-def _build_source() -> NotionInboxSource:
-    token = os.getenv("NOTION_TOKEN")
-    data_source_id = os.getenv("NOTION_DATA_SOURCE_ID")
-
-    if not token or not data_source_id:
-        raise RuntimeError(
-            "NOTION_TOKEN / NOTION_DATA_SOURCE_ID not set. "
-            "USER ACTION REQUIRED: see docs/credentials.md section 4."
-        )
-
-    ai_hantei_value = os.getenv("NOTION_AI_HANTEI_VALUE", "🟢 IDEA BOXへ")
-
-    return NotionInboxSource(
-        token=token, data_source_id=data_source_id, ai_hantei_value=ai_hantei_value
+def _build_source() -> GitHubTrendingSource:
+    return GitHubTrendingSource(
+        lookback_days=int(os.getenv("GITHUB_TRENDING_LOOKBACK_DAYS", "7")),
+        min_stars=int(os.getenv("GITHUB_TRENDING_MIN_STARS", "50")),
     )
 
 
@@ -70,7 +56,7 @@ def main() -> None:
         db=db,
     )
 
-    print("YAKUMO 自動投稿システム — Phase 3 実データ実行")
+    print("YAKUMO 自動投稿システム — GitHub Trending")
     print(f"DB: {DB_PATH}")
     print(f"AI Provider: {ai_provider_name}")
     print(f"Notifier: {type(notifier).__name__}")
@@ -84,7 +70,7 @@ def main() -> None:
     print()
 
     if not results:
-        print("記録_Research INBOXに新規の未処理エントリー（対象のAI査定）はありませんでした。")
+        print("条件に合う新規リポジトリ（未処理）はありませんでした。")
     else:
         print(f"処理件数: {len(results)}件 (投稿候補: {len(publishable)} / AI却下: {len(rejected)})")
 
