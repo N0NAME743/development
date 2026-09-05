@@ -1,2 +1,6 @@
 .env
 downloads/
+state.db
+.venv/
+__pycache__/
+*.pyc
