@@ -1,29 +1,97 @@
-"""Phase 4で実装するDiscord Bot連携（未実装スタブ）。
+"""Phase 4: Discord Botによるレビュー通知（送信側）。
 
-USER ACTION REQUIRED（着手前に必要な作業）:
-1. Discord Developer Portal (https://discord.com/developers/applications) でBotを作成する
-2. Bot Tokenを取得し、.envの DISCORD_BOT_TOKEN に設定する
-3. Botをサーバーへ招待し（メッセージ送信・ボタンInteraction権限）、
-   DISCORD_GUILD_ID / DISCORD_CHANNEL_ID を.envに設定する
-4. 作業後、取得したToken/IDをClaudeに直接貼らず、.envへ設定済みであることだけ伝える
+送信（このファイル）はDiscordのGatewayへ接続する必要がなく、Bot Tokenを使った
+単発のREST API呼び出しだけで完結する（他のプロバイダと同じrequestsベース）。
 
-実装方針（Phase 4着手時）:
-- discord.py（または pycord）でBotプロセスを常駐させる
-- ✅ 承認 / ❌ 却下 / ✏️ 修正 のボタン付きメッセージを送信する（指示書5章）
-- ボタンのInteractionを受け取り、app.database.db.Database.transition() で状態を更新する
-- 「修正」選択時はモーダル等で追加指示を受け取り、指示書6章の再生成フローへ渡す
+ボタン（承認/却下/修正）のInteractionを受け取る側は discord_daemon.py（別プロセス、
+常駐が必要）が担当する。custom_idの形式 "yakumo:{action}:{source_entry_id}" は
+両ファイルで共有している。
 """
+
+import requests
 
 from app.common.models import PostCandidate
 from app.notify.base import Notifier
 
+DISCORD_API_BASE = "https://discord.com/api/v10"
+
+CUSTOM_ID_PREFIX = "yakumo"
+
+
+def _build_payload(candidate: PostCandidate) -> dict:
+    judgement = candidate.ai_judgement
+
+    embed = {
+        "title": "YAKUMO 投稿候補",
+        "color": 0xFF4DA6,  # ネオンピンク（Visual Bible準拠）
+        "fields": [
+            {
+                "name": "元ネタ",
+                "value": candidate.source.get("summary") or "(要約なし)",
+                "inline": False,
+            },
+            {
+                "name": "投稿案（実際にXへ送る本文。リンクは機械的に付与）",
+                "value": candidate.full_post_text() or "(本文なし)",
+                "inline": False,
+            },
+            {
+                "name": "判定",
+                "value": (
+                    f"テーマ={judgement.topic} / sensitivity={judgement.sensitivity}"
+                    if judgement
+                    else "(判定なし)"
+                ),
+                "inline": False,
+            },
+        ],
+    }
+
+    components = [
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "style": 3,
+                    "label": "承認",
+                    "custom_id": f"{CUSTOM_ID_PREFIX}:approve:{candidate.source_entry_id}",
+                },
+                {
+                    "type": 2,
+                    "style": 4,
+                    "label": "却下",
+                    "custom_id": f"{CUSTOM_ID_PREFIX}:reject:{candidate.source_entry_id}",
+                },
+                {
+                    "type": 2,
+                    "style": 2,
+                    "label": "修正",
+                    "custom_id": f"{CUSTOM_ID_PREFIX}:revise:{candidate.source_entry_id}",
+                },
+            ],
+        }
+    ]
+
+    return {"embeds": [embed], "components": components}
+
 
 class DiscordBotNotifier(Notifier):
     def __init__(self, bot_token: str, guild_id: str, channel_id: str):
-        raise NotImplementedError(
-            "Phase 4未実装。USER ACTION REQUIRED: Discord Bot作成・招待が先に必要。"
-            "本ファイルのモジュールdocstringを参照。"
-        )
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self._headers = {
+            "Authorization": f"Bot {bot_token}",
+            "Content-Type": "application/json",
+        }
 
     def post_for_review(self, candidate: PostCandidate) -> str:
-        raise NotImplementedError
+        response = requests.post(
+            f"{DISCORD_API_BASE}/channels/{self.channel_id}/messages",
+            headers=self._headers,
+            json=_build_payload(candidate),
+            timeout=15,
+        )
+        response.raise_for_status()
+
+        return response.json()["id"]

@@ -2,11 +2,12 @@
 """投稿ペース制御を含む投稿キューの処理エントリーポイント。
 
 本番では、これをsystemd等で数分おきに定期実行する想定
-（run_mock.py / 実際のDiscord Botとは別プロセスとして動かす）。
+（run_mock.py / discord_daemon.pyとは別プロセスとして動かす）。
 
-Phase 4（Discord Bot）が無い現時点では、WAITING_APPROVALのものを
+DISCORD_BOT_TOKENが未設定の間（Phase 4着手前）は、WAITING_APPROVALのものを
 「承認された」とみなして自動的にAPPROVEDへ進める（本来は人間がDiscordで
-✅を押す部分の、Phase 2用の仮の代役）。
+✅を押す部分の、Phase 2用の仮の代役）。DISCORD_BOT_TOKENが設定されたら、
+discord_daemon.pyが実際の承認/却下を行うため、この自動承認は行わない。
 
 DRY_RUN=true（既定）の間は、実際にはXへ投稿せず、
 「投稿されるとしたら何が出るか」を表示するだけでDBの状態も変えない。
@@ -59,7 +60,12 @@ def main() -> None:
 
     db = Database(DB_PATH)
 
-    approved_count = _auto_approve_waiting(db)
+    if os.getenv("DISCORD_BOT_TOKEN"):
+        # Phase 4稼働中: discord_daemon.pyが実際の承認/却下を行うため、
+        # ここでの自動承認はスキップする。
+        approved_count = 0
+    else:
+        approved_count = _auto_approve_waiting(db)
 
     if approved_count:
         print(

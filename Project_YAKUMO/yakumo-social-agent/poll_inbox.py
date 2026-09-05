@@ -4,14 +4,17 @@
 run_mock.py と同じパイプラインを、Mockではなく実際の
 「記録_Research INBOX」（Notion）と実AI（既定: Gemini）で実行する。
 
-Discord Bot（Phase 4）・X投稿（Phase 5）はまだ未実装のため、
-通知はまだConsole表示のまま（承認・投稿ペース制御を試すには process_queue.py を使う）。
+DISCORD_BOT_TOKENが設定されていれば実際のDiscordへ通知する（Phase 4）。
+未設定の間はConsole表示のまま（承認・投稿ペース制御を試すには process_queue.py を使う。
+Discord Botを使う場合は discord_daemon.py も常駐させ、そちらで承認/却下する）。
+X投稿（Phase 5）はまだ未実装。
 
 必要な環境変数（.env。docs/credentials.md 参照）:
   NOTION_TOKEN, NOTION_DATA_SOURCE_ID   — 記録_Research INBOXの認証情報（既存パイプラインと共用可）
   NOTION_AI_HANTEI_VALUE                — 対象とするAI査定の値（既定: "🟢 IDEA BOXへ"）
   AI_PROVIDER                           — "gemini"（既定・無料枠あり） | "anthropic" | "openai"
   GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY — 選んだAI_PROVIDER用（AI_API_KEYでも可）
+  DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID — 設定時のみDiscordへ通知（Phase 4）
 
 本番では、これをsystemd等で定期実行（例: 15分おき）する想定
 （process_queue.py とは別プロセス）。
@@ -28,6 +31,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 from app.ai.base import AIProvider
 from app.database.db import Database
+from app.notify.base import Notifier
 from app.notify.console_notifier import ConsoleNotifier
 from app.pipeline.runner import PipelineRunner
 from app.source.notion_inbox_source import NotionInboxSource
@@ -77,22 +81,46 @@ def _build_source() -> NotionInboxSource:
     )
 
 
+def _build_notifier() -> Notifier:
+    bot_token = os.getenv("DISCORD_BOT_TOKEN")
+
+    if not bot_token:
+        return ConsoleNotifier()
+
+    guild_id = os.getenv("DISCORD_GUILD_ID")
+    channel_id = os.getenv("DISCORD_CHANNEL_ID")
+
+    if not guild_id or not channel_id:
+        raise RuntimeError(
+            "DISCORD_BOT_TOKEN is set but DISCORD_GUILD_ID / DISCORD_CHANNEL_ID is not. "
+            "USER ACTION REQUIRED: see docs/credentials.md section 2."
+        )
+
+    from app.notify.discord_bot import DiscordBotNotifier
+
+    return DiscordBotNotifier(
+        bot_token=bot_token, guild_id=guild_id, channel_id=channel_id
+    )
+
+
 def main() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
 
     db = Database(DB_PATH)
     ai_provider_name = os.getenv("AI_PROVIDER", "gemini")
+    notifier = _build_notifier()
 
     runner = PipelineRunner(
         source=_build_source(),
         ai=_build_ai_provider(),
-        notifier=ConsoleNotifier(),
+        notifier=notifier,
         db=db,
     )
 
     print("YAKUMO 自動投稿システム — Phase 3 実データ実行")
     print(f"DB: {DB_PATH}")
     print(f"AI Provider: {ai_provider_name}")
+    print(f"Notifier: {type(notifier).__name__}")
     print()
 
     results = runner.run_once()
@@ -111,7 +139,13 @@ def main() -> None:
             print(f"  却下: {c.source_entry_id} — {c.ai_judgement.reason}")
 
     print()
-    print("承認・投稿ペース制御まで試すには（Discord Bot未実装のためPhase2同様の仮承認）:")
+
+    if isinstance(notifier, ConsoleNotifier):
+        print("承認・投稿ペース制御まで試すには（Discord Bot未設定のためPhase2同様の仮承認）:")
+    else:
+        print("Discordで承認/却下してください（discord_daemon.pyの常駐が必要）。")
+        print("投稿ペース制御キューを進めるには:")
+
     print("  python3 process_queue.py")
 
 

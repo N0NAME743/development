@@ -13,9 +13,13 @@ Claude Codeは以下を代行できない。取得後、値そのものをチャ
 ## 2. Discord Bot（Phase 4で必要）
 
 1. https://discord.com/developers/applications で新規Application作成
-2. Bot設定からTokenを発行
-3. 対象サーバーへBotを招待（権限: メッセージ送信、Embed送信、ボタンInteraction）
-4. `.env` の `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_CHANNEL_ID` に設定
+2. 「Bot」設定からTokenを発行
+3. 「OAuth2」→「URL Generator」で scope: `bot`、権限: `Send Messages` / `Embed Links` を選び、生成されたURLで対象サーバーへBotを招待
+4. 開発者モードでチャンネルID・サーバーIDを取得
+5. `.env` の `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_CHANNEL_ID` に設定
+6. `pip install discord.py` を実行（`requirements.txt`には含めていない。他のAI providerパッケージと同じく、実際に使う場合だけ追加で入れる方針）
+7. `.env`設定後、`poll_inbox.py`は自動的に`DiscordBotNotifier`（Discordへ実送信）に切り替わる。ボタン（承認/却下/修正）を受け取るには `python3 discord_daemon.py` を別プロセスとして常駐させる必要がある（既存のx-likes-notion.serviceと同様、systemdサービス化を推奨）
+8. `修正`ボタンは指示をDB（`revision_instruction`）へ保存するところまで実装済み。実際にAIで再生成する自動化はまだ未実装（今後の課題）
 
 ## 3. X API（Phase 5で必要）
 
