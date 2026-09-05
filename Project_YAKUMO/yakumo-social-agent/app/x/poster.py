@@ -121,4 +121,6 @@ class XPoster:
                     "USER ACTION REQUIRED: see docs/credentials.md section 3."
                 )
 
-        return self._post_tweet(candidate.full_post_text())
+        # 元投稿へのリンクは付与しない（X APIの従量課金がリンク付きだと
+        # 大幅に高くなるため。docs/credentials.md 3章参照）。
+        return self._post_tweet(candidate.text)

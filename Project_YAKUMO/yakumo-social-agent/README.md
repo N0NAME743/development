@@ -11,7 +11,7 @@ Discord承認
    ↓
 投稿ペース制御キュー（連投防止）
    ↓
-X投稿（本文 + 元投稿へのリンク） → 履歴保存
+X投稿（本文のみ、リンクは付けない） → 履歴保存
 ```
 
 キャラクター設定そのものはこのリポジトリに置かない。唯一の正解（Authority）は常に:
@@ -27,7 +27,7 @@ X投稿（本文 + 元投稿へのリンク） → 履歴保存
 - **Phase 2（Mock版）**: 完了 — `python3 run_mock.py` / `python3 process_queue.py` で実行可能
 - **Phase 3（実AI接続）**: 完了 — `python3 poll_inbox.py` で実際の記録_Research INBOX・実AI（既定Gemini）を使用。実データで動作確認済み
 - **Phase 4（Discord Bot）**: 完了 — `discord_daemon.py` を常駐させれば、実際のDiscordで承認/却下/修正ができる（承認・却下は動作確認済み。修正は指示の保存まで実装、AIでの自動再生成は未実装）
-- **Phase 5（X投稿）**: 実装済み（`app/x/poster.py`）。既存のRaspberry Pi上の`x_likes_to_notion.py`と同じOAuth2認証情報を流用。`DRY_RUN=true`が既定で、実際にXへ投稿するには明示的に`false`へ変更する必要がある（未検証 — 実際の投稿はまだ行っていない）
+- **Phase 5（X投稿）**: 完了 — `app/x/poster.py`が実際にX APIへ投稿することを確認済み。既存のRaspberry Pi上の`x_likes_to_notion.py`と同じOAuth2認証情報を流用（投稿には`tweet.write`スコープが別途必要で、再認可が必要だった）。`DRY_RUN=true`が既定で、実際にXへ投稿するには明示的に`false`へ変更する必要がある。**元投稿へのリンクは付けない**（X APIが2026年2月以降、リンク付き投稿を$0.20/件と大幅に高く従量課金するため。リンク無しなら$0.015/件）
 
 ## クイックスタート
 

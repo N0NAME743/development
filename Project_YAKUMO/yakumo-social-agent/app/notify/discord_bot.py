@@ -21,30 +21,41 @@ CUSTOM_ID_PREFIX = "yakumo"
 def _build_payload(candidate: PostCandidate) -> dict:
     judgement = candidate.ai_judgement
 
+    fields = [
+        {
+            "name": "元ネタ",
+            "value": candidate.source.get("summary") or "(要約なし)",
+            "inline": False,
+        },
+        {
+            "name": "投稿案（実際にXへ送る本文。リンクは付与しない）",
+            "value": candidate.text or "(本文なし)",
+            "inline": False,
+        },
+        {
+            "name": "判定",
+            "value": (
+                f"テーマ={judgement.topic} / sensitivity={judgement.sensitivity}"
+                if judgement
+                else "(判定なし)"
+            ),
+            "inline": False,
+        },
+    ]
+
+    if candidate.source_url:
+        fields.append(
+            {
+                "name": "元投稿URL（ツイートには含まれません）",
+                "value": candidate.source_url,
+                "inline": False,
+            }
+        )
+
     embed = {
         "title": "YAKUMO 投稿候補",
         "color": 0xFF4DA6,  # ネオンピンク（Visual Bible準拠）
-        "fields": [
-            {
-                "name": "元ネタ",
-                "value": candidate.source.get("summary") or "(要約なし)",
-                "inline": False,
-            },
-            {
-                "name": "投稿案（実際にXへ送る本文。リンクは機械的に付与）",
-                "value": candidate.full_post_text() or "(本文なし)",
-                "inline": False,
-            },
-            {
-                "name": "判定",
-                "value": (
-                    f"テーマ={judgement.topic} / sensitivity={judgement.sensitivity}"
-                    if judgement
-                    else "(判定なし)"
-                ),
-                "inline": False,
-            },
-        ],
+        "fields": fields,
     }
 
     components = [

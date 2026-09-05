@@ -21,14 +21,15 @@ Claude Codeは以下を代行できない。取得後、値そのものをチャ
 7. `.env`設定後、`poll_inbox.py`は自動的に`DiscordBotNotifier`（Discordへ実送信）に切り替わる。ボタン（承認/却下/修正）を受け取るには `python3 discord_daemon.py` を別プロセスとして常駐させる必要がある（既存のx-likes-notion.serviceと同様、systemdサービス化を推奨）
 8. `修正`ボタンは指示をDB（`revision_instruction`）へ保存するところまで実装済み。実際にAIで再生成する自動化はまだ未実装（今後の課題）
 
-## 3. X API（Phase 5で必要。実装済み・実投稿は未検証）
+## 3. X API（Phase 5で必要。実装・実投稿とも動作確認済み）
 
 `app/x/poster.py` は実装済み。既存のRaspberry Pi上の `x_likes_to_notion.py` と同じOAuth2認証方式（Access Token期限切れ時の自動リフレッシュ含む）をそのまま使う。
 
-1. `x_likes_to_notion.py`と同じX APIアプリ（OAuth2 Client ID/Secret）・同じユーザーのAccess/Refresh Tokenが流用できる
-2. `.env` の `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_ACCESS_TOKEN` / `X_REFRESH_TOKEN` に設定（既存の値をコピー可）
+1. `x_likes_to_notion.py`と同じX APIアプリ（OAuth2 Client ID/Secret）が流用できる。**ただしAccess/Refresh Tokenは別**（下記4参照）
+2. `.env` の `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_ACCESS_TOKEN` / `X_REFRESH_TOKEN` に設定
 3. 準備ができても `DRY_RUN=true` のままにしておき、実際にXへ投稿してよいと判断した時点で明示的に `false` へ変更する
-4. **X APIは2026年2月以降、投稿1件ごとに従量課金**（リンク無し$0.015、リンクあり$0.20）。YAKUMOの投稿は必ずリンク付きなので1投稿$0.20の計算になる。想定投稿頻度に応じたコストを事前に見積もっておくこと
+4. **投稿にはtweet.writeスコープが必要。x_likes_to_notion.py用のTokenは読み取り専用のため流用不可**（403 Forbiddenになる）。X Developer PortalでApp permissionsを「Read and Write」に変更した上で、OAuth2 Authorization Code + PKCEフローを別途実行し、`tweet.write`を含む新しいAccess/Refresh Tokenを取得する必要がある
+5. **X APIは2026年2月以降、投稿1件ごとに従量課金**（リンク無し$0.015、リンクあり$0.20）。コスト面から**YAKUMOの投稿は元投稿へのリンクを付けない方針**にした（`app/x/poster.py`は`candidate.text`のみを投稿する）ため、1投稿$0.015の計算になる
 
 ## 4. Notion（情報源。docs/architecture.md 10章の変更により、実質すぐ必要）
 

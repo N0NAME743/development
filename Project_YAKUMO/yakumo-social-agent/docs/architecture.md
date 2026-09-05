@@ -262,3 +262,22 @@ Xのリンクは実際の長さに関わらずt.co換算で固定23文字（2026
 既存のX→Notionパイプラインと同様、1回のポーリングで複数件が新規追加されている場合、STEP1〜3の処理・Discord通知は全件同時に行って問題ない（人間が確認するだけのため）。ただし**承認後の実際のX投稿**は、短時間に連投するとキャラクター的に不自然になるため（X Prompt §29 投稿全体のバランス）、`app/pipeline/queue.py`の`PostingQueue`が「前回の実投稿から`MIN_POST_INTERVAL_MINUTES`（既定30分）以上空いているか」をチェックし、承認済みの中で最も古いものから1件ずつ、間隔を空けて投稿する設計にした。
 
 承認はDiscordから即座に行える（Discord Bot自体はPhase 4で未実装）。実際の投稿は`process_queue.py`を数分おきに定期実行することで進む想定（`run_mock.py`の定期取得ジョブとは別プロセス）。DRY_RUN=true の間は、ペース制御のロジック自体は動作確認できるが、DBの状態はAPPROVEDのまま変更しない（DRY_RUN解除後に正しく投稿できるようにするため）。単体テスト（`tests/test_posting_queue.py`）でペース制御・DRY_RUN時の非破壊動作を検証済み。
+
+---
+
+## 11. 追記（2026-09-06）: Phase 4・5を実装し、元投稿へのリンクを廃止
+
+Discord Bot（Phase 4）とX投稿（Phase 5）を実装し、実際のDiscordサーバー・実際のXアカウントで動作確認した。
+
+### X APIの従量課金化への対応
+
+実装・検証の過程で、X APIが2026年2月以降「リンクを含む投稿は$0.20/件、含まない投稿は$0.015/件」という従量課金になっていることが判明した（詳細は`docs/credentials.md` 3章）。当初の設計（9章の文字数予算）は「本文 + 元投稿へのリンク」を前提にしていたが、コスト面からユーザーの判断で**リンクを付けない方針へ変更**した。
+
+- `app/x/poster.py`は`PostCandidate.text`のみを投稿する（リンクを含む`full_post_text()`は削除）
+- 文字数予算は280文字（`X_POST_MAX_CHARS`）まるごと使えるようになった（`app/common/text_budget.py`）
+- Discord承認画面には引き続き元投稿URLを別フィールドとして表示する（人間が参照・クリックできるように）。ツイート本文には含まれない
+- `config/prompts/transform_to_yakumo.md`・`final_review.md`のプロンプトもリンク前提の記述を削除
+
+### X投稿にはtweet.writeスコープの再認可が必要だった
+
+既存の`x_likes_to_notion.py`用のAccess Tokenは読み取り専用スコープ（`tweet.read`等）のみで発行されており、投稿には`tweet.write`が無いため`403 Forbidden`になった。X Developer PortalでApp permissionsを「Read and Write」に変更した上で、OAuth2 Authorization Code + PKCEフローを新たに実行し、`tweet.write`を含むAccess/Refresh Tokenを取得し直した（`yakumo-social-agent/.env`のみ更新。`x_likes_to_notion.py`側の読み取り専用トークンはそのまま）。

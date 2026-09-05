@@ -20,12 +20,16 @@ class ConsoleNotifier(Notifier):
         print("元ネタ:")
         print(f"  {candidate.source.get('summary', '(要約なし)')}")
         print()
-        print("投稿案（実際にXへ送る本文。リンクは機械的に付与）:")
+        print("投稿案（実際にXへ送る本文。リンクは付与しない）:")
         print("-" * 20)
-        for line in candidate.full_post_text().splitlines():
+        for line in candidate.text.splitlines():
             print(f"  {line}")
         print("-" * 20)
-        print(f"  文字数（リンクはt.co換算23文字で計算）: {len(candidate.text)}文字 + リンク")
+        print(f"  文字数: {len(candidate.text)}文字")
+
+        if candidate.source_url:
+            print(f"  元投稿URL（ツイートには含まれません）: {candidate.source_url}")
+
         print()
         print(
             f"判定: 投稿候補={judgement.publishable} / "
