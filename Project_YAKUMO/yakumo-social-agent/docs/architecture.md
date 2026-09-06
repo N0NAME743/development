@@ -313,3 +313,28 @@ Discordの「修正」ボタンは、これまで指示をDBに保存するだ�
 5. ざっくりした手順全体を1枚の画像にする（②より対象範囲が広い版。検討の余地はあるが実装方法は未検討）
 
 方針: **まずは1（一点だけ抜粋）を軸に、コードがどうしても必要な場面だけ2（コード画像化）を足す**、という軽量な組み合わせを優先する。4のようなスレッド化・重い処理は当面避ける。
+
+**コード画像化（案2）の実装方針**
+
+外部の「綺麗なコード画像」サービス（carbon.now.sh等）は使わない方針とする。第三者サービスへの依存（レート制限・停止リスク・仕様変更）を避けたいという意向のため。
+
+代わりに **Pygments + Pillow** を使う。`pygments.formatters.img.ImageFormatter` がPNGを直接出力できるため、ヘッドレスブラウザ等の重い依存が不要（`pip install pygments pillow`のみ）。ラズパイでも軽く動く。
+
+```python
+from pygments import highlight
+from pygments.lexers import get_lexer_by_name
+from pygments.formatters import ImageFormatter
+
+def code_to_image(code: str, language: str = "python") -> bytes:
+    lexer = get_lexer_by_name(language)
+    formatter = ImageFormatter(
+        font_name="DejaVu Sans Mono",
+        line_numbers=False,
+        style="monokai",
+    )
+    return highlight(code, lexer, formatter)  # PNGのバイト列
+```
+
+Xへの添付は `POST /2/media/upload` でPNGをアップロードして`media_id`を取得 → `POST /2/tweets`の`media.media_ids`に指定、という流れになる。
+
+要準備: モノスペースフォント（`DejaVu Sans Mono`等）。多くのLinuxディストリに標準搭載だが、無ければ`apt install fonts-dejavu`で追加。
