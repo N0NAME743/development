@@ -281,3 +281,23 @@ Discord Bot（Phase 4）とX投稿（Phase 5）を実装し、実際のDiscord�
 ### X投稿にはtweet.writeスコープの再認可が必要だった
 
 既存の`x_likes_to_notion.py`用のAccess Tokenは読み取り専用スコープ（`tweet.read`等）のみで発行されており、投稿には`tweet.write`が無いため`403 Forbidden`になった。X Developer PortalでApp permissionsを「Read and Write」に変更した上で、OAuth2 Authorization Code + PKCEフローを新たに実行し、`tweet.write`を含むAccess/Refresh Tokenを取得し直した（`yakumo-social-agent/.env`のみ更新。`x_likes_to_notion.py`側の読み取り専用トークンはそのまま）。
+
+### GitHub Trendingを情報源として追加、Discord「修正」ボタンの再生成を実装
+
+`app/source/github_trending_source.py`を追加（GitHub公式Trending APIは存在しないため、Search API `created:>N日前 stars:>=N`で近似）。AIProvider/Notifierの組み立てを`app/common/factory.py`へ共通化し、`poll_github_trending.py`を新規エントリーポイントとして追加。
+
+Discordの「修正」ボタンは、これまで指示をDBに保存するだけで実際の再生成処理が無かった（`REVISION_REQUESTED`のまま誰も処理しない詰み状態だった）。`AIProvider.revise()`（`config/prompts/revise.md`）を追加し、修正指示送信後にAIで再生成 → 新しい投稿案を改めてDiscordへ投稿 → `WAITING_APPROVAL`へ戻す、という一連の流れを実装した。
+
+### 構想メモ（未着手）: X返信投稿でのGitHub実装例の紹介
+
+ユーザーから「GitHubで見つけたリポジトリの実装例・使い方を、YAKUMOの反応投稿へのリプライとして追加投稿できないか」という着想が出た。技術的には難しくないが、以下のピースが新たに必要になるため、着手時は要見積もり:
+
+1. **README等の取得**: `GitHubTrendingSource`は現状メタデータ（名前・説明・スター数）のみ取得しており、実装例・使い方を書くには`GET /repos/{owner}/{repo}/readme`等でREADME本文を別途取得する必要がある
+2. **要約用のAIステップ**: README全文は長いため、「使い方」部分を抽出・要約する新しいプロンプト+`AIProvider`メソッドが必要（`revise()`追加時と同程度の工数感）
+3. **リプライとして投稿**: X API自体は`in_reply_to_tweet_id`を指定するだけで対応可能（`app/x/poster.py`に追加するだけ）
+4. **DBスキーマ拡張**: リプライ本文を保持するカラムが必要
+5. **Discord確認UIの拡張**: 本文とリプライ文をまとめて承認できるように`_build_payload`を拡張する必要がある
+
+コスト面: リプライも別の1投稿としてカウントされるため、本文+リプライで**1セットあたり2投稿分**の課金になる。リプライにリポジトリへのリンクを含める場合はそこだけ$0.20（リンクあり）になる。
+
+なお、画像・動画などのメディア添付についても2026年2月以降の従量課金体系での明確な追加コストは确認できていない（$0.015/$0.20の区別はURLの有無によるもので、メディア自体の追加課金は公開情報からは見つからなかった）。実装する場合は`POST /2/media/upload`エンドポイント自体の課金有無をX Developer Portalの最新情報で確認すること。
