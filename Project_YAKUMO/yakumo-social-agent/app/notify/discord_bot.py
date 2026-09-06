@@ -8,6 +8,8 @@
 両ファイルで共有している。
 """
 
+from urllib.parse import quote
+
 import requests
 
 from app.common.models import PostCandidate
@@ -16,6 +18,17 @@ from app.notify.base import Notifier
 DISCORD_API_BASE = "https://discord.com/api/v10"
 
 CUSTOM_ID_PREFIX = "yakumo"
+
+
+def _x_intent_url(text: str) -> str:
+    """X APIを使わず、Web Intent（普通のWebページ）で投稿画面を開くリンク。
+
+    課金なし。本文が入力済みの投稿画面が開くだけで、実際に投稿するかは
+    人間が最終確認して自分でポストする（自動投稿の履歴・ペース制御の
+    対象外になる代わりに、X API従量課金が一切発生しない）。
+    """
+
+    return f"https://x.com/intent/tweet?text={quote(text)}"
 
 
 def _build_payload(candidate: PostCandidate) -> dict:
@@ -79,6 +92,12 @@ def _build_payload(candidate: PostCandidate) -> dict:
                     "style": 2,
                     "label": "修正",
                     "custom_id": f"{CUSTOM_ID_PREFIX}:revise:{candidate.source_entry_id}",
+                },
+                {
+                    "type": 2,
+                    "style": 5,  # Link button。押すとBotを介さず直接このURLを開く
+                    "label": "🔗 Xで開く（無課金）",
+                    "url": _x_intent_url(candidate.text),
                 },
             ],
         }
