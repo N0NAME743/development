@@ -67,7 +67,22 @@ class PostingQueue:
             source_url=next_row["source_url"],
         )
 
-        x_post_id = self.poster.post(candidate)
+        try:
+            x_post_id = self.poster.post(candidate)
+        except Exception as e:
+            # 失敗したままAPPROVEDに留めると、次回実行時にget_next_approved()が
+            # 同じ内容を再び拾って同じ失敗（例: X APIの重複投稿拒否）を繰り返す。
+            # FAILEDへ遷移させ、同じ投稿の自動再送を止める（指示書12章）。
+            self.db.transition(
+                next_row["source_entry_id"],
+                PostState.FAILED,
+                error_message=str(e),
+            )
+            print(
+                f"[queue] X投稿失敗、再送しないようFAILEDにしました: "
+                f"source_entry_id={next_row['source_entry_id']} ({e})"
+            )
+            return None
 
         if self.poster.dry_run:
             # DRY_RUN中は「投稿されるべき状態」を確認するだけで、

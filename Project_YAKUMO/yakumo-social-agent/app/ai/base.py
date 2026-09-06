@@ -44,3 +44,9 @@ class AIProvider(ABC):
     @abstractmethod
     def final_review(self, entry_text: str, draft: str) -> ReviewResult:
         raise NotImplementedError
+
+    @abstractmethod
+    def revise(self, entry_text: str, previous_draft: str, instruction: str) -> str:
+        """Discordでの「修正」指示を踏まえて、投稿案を1つ作り直す。"""
+
+        raise NotImplementedError

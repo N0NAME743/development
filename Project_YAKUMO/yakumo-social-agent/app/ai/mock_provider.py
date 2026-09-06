@@ -72,3 +72,11 @@ class MockProvider(AIProvider):
             revised = draft[:REACTION_TEXT_BUDGET]
 
         return ReviewResult(ok=len(issues) == 0, issues=issues, revised_text=revised)
+
+    def revise(self, entry_text: str, previous_draft: str, instruction: str) -> str:
+        revised = f"[MOCK-REVISED（指示: {instruction}）] {previous_draft}"
+
+        if len(revised) > REACTION_TEXT_BUDGET:
+            revised = revised[:REACTION_TEXT_BUDGET]
+
+        return revised

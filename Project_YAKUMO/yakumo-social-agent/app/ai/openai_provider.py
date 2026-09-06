@@ -98,3 +98,20 @@ class OpenAIProvider(AIProvider):
             issues=list(data.get("issues", [])),
             revised_text=str(data.get("revised_text", draft)),
         )
+
+    def revise(self, entry_text: str, previous_draft: str, instruction: str) -> str:
+        template = load_prompt_template("revise")
+
+        prompt = render(
+            template,
+            CHARACTER_BIBLE=load_character_bible(),
+            X_PROMPT=load_x_prompt(),
+            ENTRY_TEXT=entry_text,
+            PREVIOUS_DRAFT=previous_draft,
+            INSTRUCTION=instruction,
+            REACTION_TEXT_BUDGET=str(REACTION_TEXT_BUDGET),
+        )
+
+        data = extract_json_response(self._call(prompt))
+
+        return str(data.get("revised_text", previous_draft))
