@@ -79,6 +79,7 @@ class RevisionModal(discord.ui.Modal, title="YAKUMOへの修正指示"):
                 revision_instruction=instruction_text,
             )
         except Exception as e:  # noqa: BLE001 — Discordへ理由を返すため意図的に広く捕捉
+            print(f"[discord_daemon] 修正指示の保存に失敗: entry_id={self._entry_id} {e}")
             await interaction.response.send_message(
                 f"修正指示の保存に失敗しました: {e}", ephemeral=True
             )
@@ -123,6 +124,7 @@ class RevisionModal(discord.ui.Modal, title="YAKUMOへの修正指示"):
                 discord_message_id=new_message_id,
             )
         except Exception as e:  # noqa: BLE001 — Discordへ理由を返すため意図的に広く捕捉
+            print(f"[discord_daemon] 再生成に失敗: entry_id={self._entry_id} {e}")
             self._db.transition(self._entry_id, PostState.FAILED, error_message=str(e))
             await interaction.followup.send(
                 f"再生成に失敗しました: {e}", ephemeral=True
@@ -179,6 +181,20 @@ class YakumoDiscordBot(discord.Client):
                 "❌ 却下されました",
             )
         elif action == "revise":
+            # 承認/却下と同じ二重操作防止ガード。承認済みのメッセージに
+            # ボタンが残ったまま（編集の反映漏れ等）押された場合、
+            # REVISION_REQUESTEDへの不正な状態遷移エラーになってしまうため、
+            # モーダルを開く前に現在の状態を確認する。
+            row = self.db.get(entry_id)
+
+            if row is not None and row["state"] != PostState.WAITING_APPROVAL.value:
+                await interaction.response.edit_message(
+                    content="⚠️ この投稿はすでに処理済みです（二重操作を無視しました）",
+                    embeds=interaction.message.embeds,
+                    view=None,
+                )
+                return
+
             await interaction.response.send_modal(
                 RevisionModal(
                     self.db, self.ai, self.notifier, entry_id, interaction.message
