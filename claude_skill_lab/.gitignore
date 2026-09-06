@@ -1,0 +1,4 @@
+# repos/ は動作確認用に外部リポジトリをgit cloneしてくる場所。
+# 各リポジトリは自前の.gitを持つため、developmentリポジトリの履歴には含めない。
+repos/*
+!repos/.gitkeep
