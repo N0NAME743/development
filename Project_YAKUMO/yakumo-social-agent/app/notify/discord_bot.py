@@ -59,7 +59,7 @@ def _build_payload(candidate: PostCandidate) -> dict:
     if candidate.source_url:
         fields.append(
             {
-                "name": "元投稿URL（ツイートには含まれません）",
+                "name": "元投稿URL（承認/API投稿には含まれません。「Xで開く」には含まれます）",
                 "value": candidate.source_url,
                 "inline": False,
             }
@@ -97,7 +97,15 @@ def _build_payload(candidate: PostCandidate) -> dict:
                     "type": 2,
                     "style": 5,  # Link button。押すとBotを介さず直接このURLを開く
                     "label": "🔗 Xで開く（無課金）",
-                    "url": _x_intent_url(candidate.text),
+                    # X API経由の自動投稿（承認）はコスト面でリンクを付けない方針だが、
+                    # こちらはAPIを使わない（課金されない）ため、リンクを付けても
+                    # コストが変わらない。人間が最終確認して投稿するため、
+                    # 元ネタへの導線を残しておいたほうが親切。
+                    "url": _x_intent_url(
+                        f"{candidate.text}\n{candidate.source_url}"
+                        if candidate.source_url
+                        else candidate.text
+                    ),
                 },
             ],
         }
