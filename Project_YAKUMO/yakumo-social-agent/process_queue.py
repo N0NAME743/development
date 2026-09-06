@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
+from app.common.factory import build_notifier
 from app.common.state import PostState
 from app.database.db import Database
 from app.pipeline.queue import PostingQueue
@@ -31,6 +32,11 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DATA_DIR, "yakumo.db")
 
 MIN_POST_INTERVAL_MINUTES = int(os.getenv("MIN_POST_INTERVAL_MINUTES", "30"))
+
+
+def _tweet_url(tweet_id: str) -> str:
+    # ユーザー名不要の汎用パーマリンク（X側で実際のURLへリダイレクトされる）。
+    return f"https://x.com/i/status/{tweet_id}"
 
 
 def _auto_approve_waiting(db: Database) -> int:
@@ -80,6 +86,16 @@ def main() -> None:
     print()
 
     posted = queue.try_post_next()
+
+    if posted is not None:
+        row = db.get(posted)
+
+        if row and row["x_post_id"]:
+            notifier = build_notifier()
+            notifier.notify_posted(
+                f"✅ Xへ投稿しました: {_tweet_url(row['x_post_id'])}\n"
+                f"投稿時刻: {row['x_posted_at']}"
+            )
 
     if posted is None and not approved_count and db.get_next_approved() is None:
         print("承認待ち・投稿待ちの項目はありません。")

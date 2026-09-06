@@ -40,3 +40,6 @@ class ConsoleNotifier(Notifier):
         print("=" * 60)
 
         return message_id
+
+    def notify_posted(self, text: str) -> None:
+        print(f"[MOCK DISCORD] {text}")

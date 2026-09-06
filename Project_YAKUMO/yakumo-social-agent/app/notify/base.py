@@ -11,3 +11,9 @@ class Notifier(ABC):
         """レビュー依頼を送信し、message_idを返す。"""
 
         raise NotImplementedError
+
+    @abstractmethod
+    def notify_posted(self, text: str) -> None:
+        """実際にXへ投稿し終えたことを知らせる（承認→process_queue.py経由の自動投稿用）。"""
+
+        raise NotImplementedError

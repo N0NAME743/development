@@ -21,6 +21,9 @@ class _SilentNotifier(Notifier):
         self.calls += 1
         return f"test-msg-{self.calls}"
 
+    def notify_posted(self, text):
+        pass
+
 
 def _make_runner(db_path: str) -> tuple[PipelineRunner, _SilentNotifier]:
     notifier = _SilentNotifier()

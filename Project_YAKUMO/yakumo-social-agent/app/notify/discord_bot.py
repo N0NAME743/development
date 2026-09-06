@@ -133,3 +133,12 @@ class DiscordBotNotifier(Notifier):
         response.raise_for_status()
 
         return response.json()["id"]
+
+    def notify_posted(self, text: str) -> None:
+        response = requests.post(
+            f"{DISCORD_API_BASE}/channels/{self.channel_id}/messages",
+            headers=self._headers,
+            json={"content": text},
+            timeout=15,
+        )
+        response.raise_for_status()
