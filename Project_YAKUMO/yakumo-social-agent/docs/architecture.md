@@ -353,6 +353,17 @@ Xへの添付は `POST /2/media/upload` でPNGをアップロードして`media_
 
 **未確認事項**: `POST /2/media/upload`（X API v2）の呼び出しには`tweet.write`に加えて`media.write`スコープが別途必要になる可能性がある（X Developer Portalの最新情報で要確認）。もし403になった場合は、`docs/credentials.md` 3章と同様にOAuth2 Authorization Code + PKCEフローを再実行し、スコープへ`media.write`を追加する必要がある。
 
-**現状使われる場面**: 現在のAIプロンプト（`config/prompts/transform_to_yakumo.md`等）はコードブロックを含む投稿案を生成する指示になっていないため、通常運用では抽出処理は素通りする（実質未使用）。11章の「案1（一点だけ抜粋）」プロンプト調整や、将来の「X返信でのGitHub実装例紹介」機能（11章、未着手）を実装する際に、この基盤がそのまま使える状態にしてある。
+**現状使われる場面（2026-09-07時点）**: 当時のAIプロンプトはコードブロックを含む投稿案を生成する指示になっていなかったため、実質未使用だった。13章の「案1（一点だけ抜粋）」プロンプト調整により、この状況は変わっている。
 
 要準備: モノスペースフォント（`DejaVu Sans Mono`等）。多くのLinuxディストリに標準搭載だが、無ければ`apt install fonts-dejavu`で追加。
+
+## 13. 追記（2026-09-07）: 「一点だけ抜粋」プロンプト調整を実装（11章 案1）
+
+11章で最優先・最軽量とされていた案1を実装した。`config/prompts/transform_to_yakumo.md`・`final_review.md`・`revise.md`（プロンプトのみの変更。コード側の変更なし）。
+
+- `transform_to_yakumo.md`: 元ネタが複数ステップの手順・設定例・仕様の羅列を多く含む場合、それを網羅的に要約しようとせず、YAKUMOが**一番面白い・意外だと感じた一点だけ**を拾って反応するよう指示を追加。それ以外の情報は捨ててよいとした
+- 拾った一点が実際のコマンド・コードであれば、地の文とは分けて fenced code block（`` ```言語名\nコード\n``` ``）で書くよう指示。これにより12章のコード画像化基盤と接続される（1行のコマンドはfenced code blockにしても`extract_code_block()`が画像化せずテキストのまま残す設計なので、AI側は「コードなら常にfenced code blockにする」でよく、画像化するかどうかの判断はコード側に任せられる）
+- 文字数予算（`{{REACTION_TEXT_BUDGET}}`）は、fenced code block内は画像として別添付され本文に含まれないため、**fenced code blockの外側だけでカウントしてよい**と`transform_to_yakumo.md`・`final_review.md`・`revise.md`のいずれにも明記した（final_review側がfenced code block込みの文字数で誤って却下しないようにするため）
+- `final_review.md`のチェックリストに「要約の網羅化」（一点に絞れているか）と「fenced code blockは1個まで」の確認項目を追加
+
+**未検証**: プロンプトのみの変更のため、実際にGemini等が指示どおりfenced code blockを使い分けてくれるかは、実運用（`poll_inbox.py` / `poll_github_trending.py`を実APIキーで実行）で確認が必要。挙動が悪ければプロンプトの言い回しを調整すること。
