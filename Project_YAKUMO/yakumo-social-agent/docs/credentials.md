@@ -30,6 +30,7 @@ Claude Codeは以下を代行できない。取得後、値そのものをチャ
 3. 準備ができても `DRY_RUN=true` のままにしておき、実際にXへ投稿してよいと判断した時点で明示的に `false` へ変更する
 4. **投稿にはtweet.writeスコープが必要。x_likes_to_notion.py用のTokenは読み取り専用のため流用不可**（403 Forbiddenになる）。X Developer PortalでApp permissionsを「Read and Write」に変更した上で、OAuth2 Authorization Code + PKCEフローを別途実行し、`tweet.write`を含む新しいAccess/Refresh Tokenを取得する必要がある
 5. **X APIは2026年2月以降、投稿1件ごとに従量課金**（リンク無し$0.015、リンクあり$0.20）。コスト面から**YAKUMOの投稿は元投稿へのリンクを付けない方針**にした（`app/x/poster.py`は`candidate.text`のみを投稿する）ため、1投稿$0.015の計算になる
+6. **コード画像添付機能（`docs/architecture.md` 12章）を使う場合**、`POST /2/media/upload`が`tweet.write`に加えて`media.write`スコープを要求する可能性がある（未確認）。403になった場合は本章の手順でOAuth2 Authorization Code + PKCEフローを再実行し、スコープに`media.write`を追加すること
 
 ## 4. Notion（情報源。docs/architecture.md 10章の変更により、実質すぐ必要）
 

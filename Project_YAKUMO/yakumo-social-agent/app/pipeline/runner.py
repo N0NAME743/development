@@ -4,7 +4,10 @@
 ログに元投稿の要約全文を出さない（セキュリティ要件13章）。
 """
 
+import json
+
 from app.ai.base import AIProvider
+from app.common.code_image import split_text_and_media
 from app.common.models import AIJudgement, PostCandidate, ReviewResult
 from app.common.state import PostState
 from app.database.db import Database, content_hash
@@ -127,12 +130,16 @@ class PipelineRunner:
 
         review: ReviewResult = self.ai.final_review(text, selected)
         candidate.review = review
-        candidate.text = review.revised_text
+
+        # 投稿案に複数行のコードブロックが含まれる場合、本文からは取り除き
+        # 画像として添付する（docs/architecture.md 11章「コード画像化」）。
+        candidate.text, candidate.media = split_text_and_media(review.revised_text)
 
         self.db.transition(
             entry_id,
             PostState.DRAFTED,
             draft_text=candidate.text,
+            media_json=json.dumps(candidate.media) if candidate.media else None,
             draft_generated_at=_now(),
         )
         _log("DRAFTED", source_entry_id=entry_id, issues=len(review.issues))

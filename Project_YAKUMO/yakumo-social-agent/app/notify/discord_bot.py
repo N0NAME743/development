@@ -8,10 +8,12 @@
 両ファイルで共有している。
 """
 
+import json
 from urllib.parse import quote
 
 import requests
 
+from app.common.code_image import code_to_image, first_code_image
 from app.common.models import PostCandidate
 from app.notify.base import Notifier
 
@@ -65,11 +67,28 @@ def _build_payload(candidate: PostCandidate) -> dict:
             }
         )
 
+    code_image = first_code_image(candidate.media)
+
+    if code_image is not None:
+        lines = code_image["code"].count("\n") + 1
+        fields.append(
+            {
+                "name": "🖼 添付コード画像（承認時にXへも添付されます）",
+                "value": f"{code_image['language']}（{lines}行）",
+                "inline": False,
+            }
+        )
+
     embed = {
         "title": "YAKUMO 投稿候補",
         "color": 0xFF4DA6,  # ネオンピンク（Visual Bible準拠）
         "fields": fields,
     }
+
+    if code_image is not None:
+        # post_for_review()側でこのファイル名でアップロードする
+        # （Discordの添付ファイル参照方式: attachment://<filename>）。
+        embed["image"] = {"url": "attachment://code.png"}
 
     components = [
         {
@@ -124,12 +143,29 @@ class DiscordBotNotifier(Notifier):
         }
 
     def post_for_review(self, candidate: PostCandidate) -> str:
-        response = requests.post(
-            f"{DISCORD_API_BASE}/channels/{self.channel_id}/messages",
-            headers=self._headers,
-            json=_build_payload(candidate),
-            timeout=15,
-        )
+        payload = _build_payload(candidate)
+        code_image = first_code_image(candidate.media)
+
+        if code_image is None:
+            response = requests.post(
+                f"{DISCORD_API_BASE}/channels/{self.channel_id}/messages",
+                headers=self._headers,
+                json=payload,
+                timeout=15,
+            )
+        else:
+            # 添付ファイル付きメッセージはJSON単体では送れないため、
+            # multipart/form-data（payload_json + files）で送る。
+            image_bytes = code_to_image(code_image["code"], code_image["language"])
+
+            response = requests.post(
+                f"{DISCORD_API_BASE}/channels/{self.channel_id}/messages",
+                headers={"Authorization": self._headers["Authorization"]},
+                data={"payload_json": json.dumps(payload)},
+                files={"files[0]": ("code.png", image_bytes, "image/png")},
+                timeout=15,
+            )
+
         response.raise_for_status()
 
         return response.json()["id"]

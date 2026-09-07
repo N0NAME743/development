@@ -6,8 +6,14 @@
 cd yakumo-social-agent
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt        # 実行に必要な最小限（requests, python-dotenv）
+pip install -r requirements.txt        # requests, python-dotenv, Pygments, Pillow（コード画像化用）
 pip install -r requirements-dev.txt    # テストも実行する場合（上記 + pytest）
+```
+
+コード画像化（`docs/architecture.md` 12章）はPygments経由でOSの`fontconfig`（`fc-list`コマンド）を使ってフォントを解決するため、未導入の環境（特にラズパイ）では別途システムパッケージが必要な場合がある。
+
+```bash
+sudo apt-get install fontconfig fonts-dejavu-core
 ```
 
 ## Phase 2（今すぐ試せる。認証情報不要）

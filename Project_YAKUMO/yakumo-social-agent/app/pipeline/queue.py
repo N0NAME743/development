@@ -11,6 +11,7 @@ DRY_RUN=true の間は、実際には投稿せず「投稿するとしたら何�
 DBの状態もAPPROVEDのまま変更しない（DRY_RUNを解除した後に本当に投稿できるようにするため）。
 """
 
+import json
 from datetime import datetime, timezone
 
 from app.common.models import PostCandidate
@@ -60,11 +61,14 @@ class PostingQueue:
         if next_row is None:
             return None
 
+        media_json = next_row["media_json"]
+
         candidate = PostCandidate(
             source_entry_id=next_row["source_entry_id"],
             content_hash=next_row["content_hash"],
             text=next_row["draft_text"] or "",
             source_url=next_row["source_url"],
+            media=json.loads(media_json) if media_json else [],
         )
 
         try:

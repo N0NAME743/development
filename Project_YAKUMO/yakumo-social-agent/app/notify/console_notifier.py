@@ -2,6 +2,7 @@
 
 import itertools
 
+from app.common.code_image import first_code_image
 from app.common.models import PostCandidate
 from app.notify.base import Notifier
 
@@ -26,6 +27,12 @@ class ConsoleNotifier(Notifier):
             print(f"  {line}")
         print("-" * 20)
         print(f"  文字数: {len(candidate.text)}文字")
+
+        code_image = first_code_image(candidate.media)
+
+        if code_image is not None:
+            lines = code_image["code"].count("\n") + 1
+            print(f"  🖼 コード画像添付予定: {code_image['language']}（{lines}行）")
 
         if candidate.source_url:
             print(f"  元投稿URL（ツイートには含まれません）: {candidate.source_url}")

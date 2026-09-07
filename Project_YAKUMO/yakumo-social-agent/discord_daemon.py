@@ -18,6 +18,7 @@ poll_inbox.py / process_queue.py は定期実行（数分〜十数分おき）�
 """
 
 import asyncio
+import json
 import os
 import sys
 
@@ -35,6 +36,7 @@ except ImportError as e:
     ) from e
 
 from app.ai.base import AIProvider
+from app.common.code_image import split_text_and_media
 from app.common.factory import build_ai_provider, build_notifier
 from app.common.models import PostCandidate
 from app.common.state import PostState
@@ -102,16 +104,23 @@ class RevisionModal(discord.ui.Modal, title="YAKUMOへの修正指示"):
             review = await asyncio.to_thread(
                 self._ai.final_review, row["source_text"] or "", revised_text
             )
-            final_text = review.revised_text
+
+            # 通常のドラフト生成（app/pipeline/runner.py）と同じく、複数行の
+            # コードブロックは本文から取り除き画像として添付する。
+            final_text, media = split_text_and_media(review.revised_text)
 
             self._db.transition(
-                self._entry_id, PostState.DRAFTED, draft_text=final_text
+                self._entry_id,
+                PostState.DRAFTED,
+                draft_text=final_text,
+                media_json=json.dumps(media) if media else None,
             )
 
             candidate = PostCandidate(
                 source_entry_id=self._entry_id,
                 content_hash="",
                 text=final_text,
+                media=media,
                 source_url=row["source_url"],
                 source={"summary": (row["source_text"] or "")[:60]},
             )

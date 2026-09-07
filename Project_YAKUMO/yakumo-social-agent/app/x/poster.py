@@ -14,6 +14,7 @@ import os
 
 import requests
 
+from app.common.code_image import code_to_image, first_code_image
 from app.common.models import PostCandidate
 
 # app/x/poster.py から見て2つ上（yakumo-social-agent/）にある.envを直接更新する。
@@ -82,7 +83,36 @@ class XPoster:
         _update_env_value("X_ACCESS_TOKEN", self._access_token)
         _update_env_value("X_REFRESH_TOKEN", self._refresh_token)
 
-    def _post_tweet(self, text: str) -> str:
+    def _upload_media(self, image_bytes: bytes) -> str:
+        """PNG画像をアップロードし、tweetのmedia.media_idsに使えるmedia_idを返す
+        （docs/architecture.md 11章「コード画像化」）。
+        """
+
+        def _request() -> requests.Response:
+            return requests.post(
+                f"{X_API_BASE}/media/upload",
+                headers={"Authorization": f"Bearer {self._access_token}"},
+                data={"media_category": "tweet_image"},
+                files={"media": ("code.png", image_bytes, "image/png")},
+                timeout=30,
+            )
+
+        response = _request()
+
+        if response.status_code == 401:
+            self._refresh_access_token()
+            response = _request()
+
+        response.raise_for_status()
+
+        return response.json()["data"]["id"]
+
+    def _post_tweet(self, text: str, media_ids: list[str] | None = None) -> str:
+        payload: dict = {"text": text}
+
+        if media_ids:
+            payload["media"] = {"media_ids": media_ids}
+
         def _request() -> requests.Response:
             return requests.post(
                 f"{X_API_BASE}/tweets",
@@ -90,7 +120,7 @@ class XPoster:
                     "Authorization": f"Bearer {self._access_token}",
                     "Content-Type": "application/json",
                 },
-                json={"text": text},
+                json=payload,
                 timeout=30,
             )
 
@@ -105,8 +135,15 @@ class XPoster:
         return response.json()["data"]["id"]
 
     def post(self, candidate: PostCandidate) -> str:
+        code_image = first_code_image(candidate.media)
+
         if self.dry_run:
-            print(f"[DRY_RUN] Xへは投稿しません: {candidate.text[:40]}...")
+            note = (
+                f"（コード画像1枚を添付予定: {code_image['language']}）"
+                if code_image is not None
+                else ""
+            )
+            print(f"[DRY_RUN] Xへは投稿しません: {candidate.text[:40]}...{note}")
             return "dry-run-no-post"
 
         for key, value in (
@@ -121,6 +158,12 @@ class XPoster:
                     "USER ACTION REQUIRED: see docs/credentials.md section 3."
                 )
 
+        media_ids = None
+
+        if code_image is not None:
+            image_bytes = code_to_image(code_image["code"], code_image["language"])
+            media_ids = [self._upload_media(image_bytes)]
+
         # 元投稿へのリンクは付与しない（X APIの従量課金がリンク付きだと
         # 大幅に高くなるため。docs/credentials.md 3章参照）。
-        return self._post_tweet(candidate.text)
+        return self._post_tweet(candidate.text, media_ids=media_ids)

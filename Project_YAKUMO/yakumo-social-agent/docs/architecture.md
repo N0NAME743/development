@@ -337,4 +337,22 @@ def code_to_image(code: str, language: str = "python") -> bytes:
 
 Xへの添付は `POST /2/media/upload` でPNGをアップロードして`media_id`を取得 → `POST /2/tweets`の`media.media_ids`に指定、という流れになる。
 
+## 12. 追記（2026-09-07）: コード画像化を実装
+
+上記の方針どおり実装した。
+
+- `app/common/code_image.py`: `code_to_image()`（Pygments+PillowでPNG化）、`extract_code_block()` / `split_text_and_media()`（投稿本文中の ```` ```lang\n...\n``` ```` 形式のfenced code blockを検出し、2行以上ある場合だけ本文から取り除いて画像候補として抜き出す。1行だけの短いコマンドは方針どおりテキストのまま残す）
+- `app/pipeline/runner.py`（`_draft_and_review`）・`discord_daemon.py`（`RevisionModal`、修正時の再生成）の両方で、AIが生成した投稿案に対して同じ抽出処理を適用してから`PostCandidate.media`へ格納する
+- `app/database/db.py`: `posts`テーブルに`media_json`カラムを追加。既存の`yakumo.db`（CREATE TABLE IF NOT EXISTSでは新カラムが追加されないため）向けに、起動時に`PRAGMA table_info`で存在確認しALTER TABLEで補うマイグレーションを`Database.__init__`に実装した
+- `app/pipeline/queue.py`: `process_queue.py`が投稿する直前に`media_json`から`PostCandidate.media`を復元する
+- `app/x/poster.py`: `code_image`があれば投稿直前に画像を生成し`POST /2/media/upload`でアップロード、得られた`media_id`を`POST /2/tweets`の`media.media_ids`に指定する。DRY_RUN中は実際のアップロード・投稿は行わず、添付予定であることだけログに出す
+- `app/notify/discord_bot.py`: レビュー用Discordメッセージにもコード画像をプレビュー添付する（`multipart/form-data`で`payload_json` + `files[0]`として送信し、embedの`image.url`に`attachment://code.png`を指定）。人間が承認前に実際に添付される画像を確認できるようにするため
+- `app/notify/console_notifier.py`（Phase2 Mock用）にも同等のログ行を追加
+
+**実行環境の前提**: PygmentsのImageFormatterはLinux上で内部的に`fc-list`（fontconfig）を呼びフォントパスを解決する。開発コンテナには`fontconfig` / `fonts-dejavu-core`が入っていなかったため追加インストールして動作確認した。**ラズパイ側にこれらが無い場合、`apt-get install fontconfig fonts-dejavu-core`が別途必要**（USER ACTION REQUIRED — インストールできたら特に報告不要、実際にコード画像付きの投稿が生成されたときにエラーが出ないかだけ見てもらえればよい）。
+
+**未確認事項**: `POST /2/media/upload`（X API v2）の呼び出しには`tweet.write`に加えて`media.write`スコープが別途必要になる可能性がある（X Developer Portalの最新情報で要確認）。もし403になった場合は、`docs/credentials.md` 3章と同様にOAuth2 Authorization Code + PKCEフローを再実行し、スコープへ`media.write`を追加する必要がある。
+
+**現状使われる場面**: 現在のAIプロンプト（`config/prompts/transform_to_yakumo.md`等）はコードブロックを含む投稿案を生成する指示になっていないため、通常運用では抽出処理は素通りする（実質未使用）。11章の「案1（一点だけ抜粋）」プロンプト調整や、将来の「X返信でのGitHub実装例紹介」機能（11章、未着手）を実装する際に、この基盤がそのまま使える状態にしてある。
+
 要準備: モノスペースフォント（`DejaVu Sans Mono`等）。多くのLinuxディストリに標準搭載だが、無ければ`apt install fonts-dejavu`で追加。

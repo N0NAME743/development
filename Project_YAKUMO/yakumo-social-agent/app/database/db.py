@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS posts (
     source_url TEXT,
     ai_judgement_json TEXT,
     draft_text TEXT,
+    media_json TEXT,
     review_json TEXT,
     revision_instruction TEXT,
     discord_message_id TEXT,
@@ -49,6 +50,19 @@ class Database:
         self.db_path = db_path
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """CREATE TABLE IF NOT EXISTSは既存テーブルへ新しいカラムを追加しないため、
+        起動時に不足カラムをALTER TABLEで補う（既存のyakumo.dbを壊さないため）。
+        """
+
+        existing_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(posts)")
+        }
+
+        if "media_json" not in existing_columns:
+            conn.execute("ALTER TABLE posts ADD COLUMN media_json TEXT")
 
     @contextmanager
     def _connect(self):

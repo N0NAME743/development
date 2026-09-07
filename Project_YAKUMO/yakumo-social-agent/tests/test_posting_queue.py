@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -87,6 +88,48 @@ def test_second_item_posts_after_interval_elapses():
 
         second = queue.try_post_next()
         assert second == "e2"
+
+
+def test_queue_passes_stored_code_image_media_to_poster():
+    """media_jsonにコード画像情報を保存しておけば、投稿時にPostCandidate.mediaへ
+    正しく復元されて渡ることを確認する（docs/architecture.md 11章）。
+    """
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "t.db")
+        db = Database(db_path)
+        entry_id = "e-media"
+
+        db.create_new(entry_id, "原文", source_url="https://x.com/s/e-media")
+        db.transition(entry_id, PostState.ANALYZED)
+        db.transition(
+            entry_id,
+            PostState.DRAFTED,
+            draft_text="見て！",
+            media_json=json.dumps(
+                [{"type": "code_image", "language": "python", "code": "print(1)"}]
+            ),
+        )
+        db.transition(entry_id, PostState.WAITING_APPROVAL, discord_message_id="m1")
+        db.transition(entry_id, PostState.APPROVED, approval_status="approved")
+
+        poster = _FakePoster()
+        received = {}
+
+        def _post(candidate):
+            received["media"] = candidate.media
+            poster.calls += 1
+            return f"fake-x-post-{poster.calls}"
+
+        poster.post = _post
+
+        queue = PostingQueue(db=db, poster=poster, min_interval_minutes=30)
+        posted = queue.try_post_next()
+
+        assert posted == entry_id
+        assert received["media"] == [
+            {"type": "code_image", "language": "python", "code": "print(1)"}
+        ]
 
 
 def test_dry_run_does_not_advance_state(monkeypatch):
