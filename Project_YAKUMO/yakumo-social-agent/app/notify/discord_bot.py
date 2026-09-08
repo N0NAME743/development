@@ -22,15 +22,38 @@ DISCORD_API_BASE = "https://discord.com/api/v10"
 CUSTOM_ID_PREFIX = "yakumo"
 
 
-def _x_intent_url(text: str) -> str:
+def _x_intent_url(text: str, source_url: str | None = None) -> str:
     """X APIを使わず、Web Intent（普通のWebページ）で投稿画面を開くリンク。
 
     課金なし。本文が入力済みの投稿画面が開くだけで、実際に投稿するかは
     人間が最終確認して自分でポストする（自動投稿の履歴・ペース制御の
     対象外になる代わりに、X API従量課金が一切発生しない）。
+
+    DiscordのリンクボタンURLは512文字までという制限があり、日本語は
+    パーセントエンコードで1文字が最大9文字に膨らむため、通常の長さの
+    投稿案でもすぐ超過してクラッシュしていた（本文が空でも
+    Discordの400 Bad Requestで投稿候補自体が届かなくなる致命的なバグ）。
+    超える場合は本文側だけを切り詰める。source_urlは切り詰めない
+    （リンク先が壊れると参照する意味が無いため）。
     """
 
-    return f"https://x.com/intent/tweet?text={quote(text)}"
+    prefix = "https://x.com/intent/tweet?text="
+    max_len = 512
+    ellipsis = "…"
+
+    suffix = f"\n{source_url}" if source_url else ""
+    budget = max_len - len(prefix) - len(quote(suffix))
+
+    if len(quote(text)) <= budget:
+        return prefix + quote(text + suffix)
+
+    ellipsis_len = len(quote(ellipsis))
+    body = text
+
+    while body and len(quote(body)) + ellipsis_len > budget:
+        body = body[:-1]
+
+    return prefix + quote(body + ellipsis + suffix)
 
 
 def _build_payload(candidate: PostCandidate) -> dict:
@@ -120,11 +143,7 @@ def _build_payload(candidate: PostCandidate) -> dict:
                     # こちらはAPIを使わない（課金されない）ため、リンクを付けても
                     # コストが変わらない。人間が最終確認して投稿するため、
                     # 元ネタへの導線を残しておいたほうが親切。
-                    "url": _x_intent_url(
-                        f"{candidate.text}\n{candidate.source_url}"
-                        if candidate.source_url
-                        else candidate.text
-                    ),
+                    "url": _x_intent_url(candidate.text, candidate.source_url),
                 },
             ],
         }
