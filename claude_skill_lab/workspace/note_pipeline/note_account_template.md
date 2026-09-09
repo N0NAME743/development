@@ -142,9 +142,11 @@ X Prompt §32「AI臭を避ける」の禁止表現（〜ですね／〜して�
 | 1 | 「休日、絶対有意義に過ごすぞ」からの、だいたい詰むやつ | ✅YAKUMO×MONYトーンで下書き完成済み（`note_draft_yakumo_mony_holiday.md`） |
 | 2 | 貯金が増えない人間、だいたい同じところで詰んでる | ✅下書き完成済み（`note_draft_yakumo_mony_chokin.md`） |
 | 3 | 「本当にやりたいこと」って聞かれて固まる人間、観測してて気づいたこと | ✅下書き完成済み（`note_draft_yakumo_mony_yaritai.md`） |
+| 4 | サブスク解約しようとした人間、だいたい「あと1ヶ月だけ」で止まる | ✅下書き完成済み（`note_draft_yakumo_mony_sabusuku.md`） |
 
 → #2・#3は元のテーマ候補からの流用。タイトルと語り口をYAKUMO×MONYトーンに変換する想定
 　（MONYが先に気づく／通信で調べる／実際に試してみせる、などの役割を各記事に1つは入れる）。
+　#4は最初の3本すべて着手済みになったため、新規に20テーマ候補を出して競合確認のうえ選定。
 
 **旧版ファイル**: `note_draft_yakumo_holiday.md`（YAKUMO単独トーン、MONYは添え物程度）は
 コンビ方向への転換前の版として残しているが、投稿に使うのは`note_draft_yakumo_mony_holiday.md`。
