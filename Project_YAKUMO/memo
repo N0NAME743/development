@@ -1,14 +1,30 @@
-【YAKUMO Project ソース】
+【YAKUMO Project フォルダ構成】
 
-現行Officialだけ
-├─ Character Bible v1.2
-├─ Visual Bible v1.3
-├─ X Prompt v1.4
-├─ Costume Registry v1.3
-├─ C02 v1.1
-├─ C03 v1.1
-├─ HACKING MODE v1.1
-├─ MONY v2.0 Specification
-├─ YAKUMO Master v2.0
-├─ MONY Master v2.0
-└─ MONY Expression Reference
+official/ … 現行の公式設定文書＋現行マスター画像（このフォルダの中身だけ見れば最新の公式設定がわかる）
+├─ Character Bible v1.3
+├─ Visual Bible v2.0
+├─ X Prompt v1.5
+├─ Costume Registry v1.4
+├─ C02 v1.2 / C03 v1.2
+├─ HACKING MODE v1.2
+├─ MONY v2.0 Specification v1.1
+├─ YAKUMO Master v3.0（Default Costume: C01-B Victorian Gothic Cyber Style）
+├─ MONY Master v2.0 / MONY Expression Reference
+└─ Promo Key Visual v1.0（プロモーション用アート、造形基準ではない）
+
+archive/ … 過去バージョン（履歴確認用、現行設定としては使わない）
+├─ official_history/ … 上記各文書の旧バージョン
+├─ early_drafts/ … 公式化される前の初期ドラフト
+└─ images/ … 旧マスター画像（YAKUMO v1.0/v2.0、MONY v1.0）、今回のMaster/KeyVisualの元ファイル(source_originals/)
+
+references/ … 非公式の参考資料・ラフ・候補案
+├─ costume_candidates/ … 衣装候補ラフ
+│  ├─ Style_Academy / Style_Beach / Style_Idol … 旧デザイン期の衣装候補ラフ
+│  ├─ C05_school_uniform/ … 制服コンセプト（設定シート＋単体イラスト。Registry未登録、ID要再採番）
+│  └─ CSW01_aqua_unit/ … 水着コンセプト（設定シート。既存C02とは別案。Registry未登録、ID要再採番）
+├─ crossover_fanart/ … 他社IPとのクロスオーバー企画（例: NieR:Automata × YAKUMO）。公式設定・権利関係が別物なので明確に分離
+├─ visual_drafts_v1/ … 旧デザイン検討期のラフ画像一式
+├─ visual_drafts_v2/ … 現行Master v3.0に至るまでの検討ラフ
+└─ wallpaper/ … 壁紙素材
+
+yakumo-social-agent/ … SNS自動投稿エージェント（別プロジェクト、コード）
