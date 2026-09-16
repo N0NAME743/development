@@ -5,5 +5,5 @@
     "source=${localEnv:USERPROFILE}/Documents/development/Project_YAKUMO,target=/workspaces/project-yakumo,type=bind"
   ],
 
-  "postCreateCommand": "cd /tmp && echo 'Installing Claude Code... this may take several minutes.' && curl -fsSL https://claude.ai/install.sh | bash && echo 'Claude Code installation complete.'"
+  "postCreateCommand": "cd /tmp && echo 'Installing Claude Code... this may take several minutes.' && curl -fsSL https://claude.ai/install.sh | bash && echo 'Claude Code installation complete.' && bash /workspaces/development/claude_skill_lab/tools/setup-dashboard-alias.sh"
 }
