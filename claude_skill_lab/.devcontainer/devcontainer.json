@@ -1,4 +1,9 @@
 {
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu24.04",
-  "postCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash"
+
+  "mounts": [
+    "source=${localEnv:USERPROFILE}/Documents/development/Project_YAKUMO,target=/workspaces/project-yakumo,type=bind"
+  ],
+
+  "postCreateCommand": "cd /tmp && echo 'Installing Claude Code... this may take several minutes.' && curl -fsSL https://claude.ai/install.sh | bash && echo 'Claude Code installation complete.'"
 }
