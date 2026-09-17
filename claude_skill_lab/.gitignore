@@ -2,3 +2,6 @@
 # 各リポジトリは自前の.gitを持つため、developmentリポジトリの履歴には含めない。
 repos/*
 !repos/.gitkeep
+
+# devcontainer再構築後もSSH鍵を復元できるようにするための退避先(秘密鍵を含むため必ず除外)
+.devcontainer/ssh-persist/

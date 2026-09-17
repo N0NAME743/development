@@ -11,5 +11,5 @@
     "source=${localEnv:USERPROFILE}/Documents/development/Project_YAKUMO,target=/workspaces/project-yakumo,type=bind"
   ],
 
-  "postCreateCommand": "cd /tmp && echo 'Installing Claude Code... this may take several minutes.' && curl -fsSL https://claude.ai/install.sh | bash && echo 'Claude Code installation complete.' && sed -i 's/\\r$//' /workspaces/development/claude_skill_lab/tools/setup-dashboard-alias.sh && bash /workspaces/development/claude_skill_lab/tools/setup-dashboard-alias.sh"
+  "postCreateCommand": "cd /tmp && echo 'Installing Claude Code... this may take several minutes.' && curl -fsSL https://claude.ai/install.sh | bash && echo 'Claude Code installation complete.' && sed -i 's/\\r$//' /workspaces/development/claude_skill_lab/tools/setup-dashboard-alias.sh && bash /workspaces/development/claude_skill_lab/tools/setup-dashboard-alias.sh && sed -i 's/\\r$//' /workspaces/development/claude_skill_lab/tools/setup-ssh-key.sh && bash /workspaces/development/claude_skill_lab/tools/setup-ssh-key.sh"
 }
