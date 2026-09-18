@@ -9,3 +9,9 @@
 　docker_desktop・docker_desktop_homeは中身がほぼ空/ブラウザキャッシュだったため削除
 　（ただしline_stickers・写真・メモは実データとして救出しpersonal/picture/へ移動）
 　Project_YAKUMOは活発に開発中で独立リポジトリ化の候補だが、今回は保留
+
+　【フォルダ命名ルール（今回決定）】
+　新設・統合するフォルダ名は英語snake_caseに統一（例: apps, personal, investment）
+　clients・picture・_backupなど既存の英語名フォルダはそのまま
+　claude_skill_lab・Project_YAKUMOはdevcontainerのマウントパス等が依存するため
+　命名統一の対象外とし、名前を変えない
