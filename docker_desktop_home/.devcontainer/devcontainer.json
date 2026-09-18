@@ -1,4 +1,0 @@
-{
-    "image": "mcr.microsoft.com/devcontainers/base:ubuntu24.04",
-    "postCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash"
-}
