@@ -2,3 +2,10 @@
 　銘柄分析_初動をAIを使ってコードの修正
 　ただ、いまいち実用性を見いだせず・・・
 　途中で挫折
+
+2026年9月18日
+　developmentルート直下をClaude Codeと整理
+　python_codeは_backupに完全一致のコピーがあったため削除
+　docker_desktop・docker_desktop_homeは中身がほぼ空/ブラウザキャッシュだったため削除
+　（ただしline_stickers・写真・メモは実データとして救出しpersonal/picture/へ移動）
+　Project_YAKUMOは活発に開発中で独立リポジトリ化の候補だが、今回は保留
